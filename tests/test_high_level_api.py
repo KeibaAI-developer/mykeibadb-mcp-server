@@ -243,6 +243,18 @@ def test_get_uma_rekisen_returns_error_on_db_failure(mock_manager: MockerFixture
     assert "error" in result
 
 
+def test_analyze_sire_seiseki_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
+    """DBエラー時にsuccess=Falseが返る."""
+    from mykeibadb.exceptions import QueryExecutionError
+
+    mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
+
+    result = analyze_sire_seiseki(mock_manager, sire_name="ディープインパクト")
+
+    assert result["success"] is False
+    assert "error" in result
+
+
 def test_analyze_waku_seiseki_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
     """DBエラー時にsuccess=Falseが返る."""
     from mykeibadb.exceptions import QueryExecutionError

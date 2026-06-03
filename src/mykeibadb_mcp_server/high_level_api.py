@@ -52,8 +52,10 @@ def analyze_ninki_seiseki(
         sql = f"""
             SELECT
                 COUNT(*) AS total,
-                SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1 THEN 1 ELSE 0 END) AS wins,
-                SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3 THEN 1 ELSE 0 END) AS fukusho
+                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
+                    THEN 1 ELSE 0 END), 0) AS wins,
+                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3
+                    THEN 1 ELSE 0 END), 0) AS fukusho
             FROM umagoto_race_joho u
             JOIN race_shosai r ON u.race_code = r.race_code
             WHERE {where}
@@ -117,8 +119,10 @@ def analyze_kishu_seiseki(
             SELECT
                 km.kishu_mei,
                 COUNT(*) AS total,
-                SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1 THEN 1 ELSE 0 END) AS wins,
-                SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3 THEN 1 ELSE 0 END) AS fukusho
+                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
+                    THEN 1 ELSE 0 END), 0) AS wins,
+                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3
+                    THEN 1 ELSE 0 END), 0) AS fukusho
             FROM umagoto_race_joho u
             JOIN race_shosai r ON u.race_code = r.race_code
             JOIN kishu_master km ON u.kishu_code = km.kishu_code
@@ -186,8 +190,10 @@ def analyze_sire_seiseki(
             SELECT
                 k.chichi_uma_bamei AS sire_name,
                 COUNT(*) AS total,
-                SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1 THEN 1 ELSE 0 END) AS wins,
-                SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3 THEN 1 ELSE 0 END) AS fukusho
+                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
+                    THEN 1 ELSE 0 END), 0) AS wins,
+                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3
+                    THEN 1 ELSE 0 END), 0) AS fukusho
             FROM umagoto_race_joho u
             JOIN race_shosai r ON u.race_code = r.race_code
             JOIN keito_joho2 k ON u.ketto_toroku_bango = k.ketto_toroku_bango
@@ -316,8 +322,10 @@ def analyze_waku_seiseki(
             SELECT
                 u.wakuban,
                 COUNT(*) AS total,
-                SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1 THEN 1 ELSE 0 END) AS wins,
-                SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3 THEN 1 ELSE 0 END) AS fukusho
+                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
+                    THEN 1 ELSE 0 END), 0) AS wins,
+                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3
+                    THEN 1 ELSE 0 END), 0) AS fukusho
             FROM umagoto_race_joho u
             JOIN race_shosai r ON u.race_code = r.race_code
             WHERE {where}
