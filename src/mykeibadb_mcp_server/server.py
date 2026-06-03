@@ -10,14 +10,14 @@ from mykeibadb.exceptions import MykeibaDBConnectionError
 
 mcp = FastMCP("mykeibadb MCP Server")
 
-_config = ConfigManager.from_env()
 _conn_manager: ConnectionManager | None = None
 
 
 def _get_connection_manager() -> ConnectionManager:
     global _conn_manager
     if _conn_manager is None:
-        _conn_manager = ConnectionManager(_config)
+        config = ConfigManager.from_env()
+        _conn_manager = ConnectionManager(config)
     return _conn_manager
 
 
