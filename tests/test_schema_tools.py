@@ -71,7 +71,7 @@ def test_get_table_info_includes_column_notes(mocker: MockerFixture) -> None:
     result = get_table_info("RACE_SHOSAI")
 
     grade_col = next(c for c in result["columns"] if c["name"] == "GRADE_CODE")
-    assert "GI" in grade_col["note"] or grade_col["note"] != ""
+    assert "GI" in grade_col["note"]
 
 
 # 正常系: get_sql_generation_prompt

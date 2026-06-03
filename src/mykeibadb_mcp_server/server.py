@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sys
 from collections.abc import Callable
 from datetime import date
@@ -157,9 +158,11 @@ def get_table_info(table_name: str) -> dict[str, Any]:
     """
     try:
         upper_name = table_name.upper()
+        if upper_name not in TABLE_DESCRIPTIONS:
+            return {"success": False, "error": f"テーブル '{upper_name}' はサポートされていません"}
         manager = _get_connection_manager()
         sql = """
-            SELECT column_name, data_type, character_maximum_length, is_nullable
+            SELECT column_name, data_type, is_nullable
             FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = %s
             ORDER BY ordinal_position
@@ -256,20 +259,23 @@ def get_table_sample_data(table_name: str, num_rows: int = 5) -> dict[str, Any]:
         dict: サンプルデータのrows/columns/dataを含む辞書
     """
     try:
-        validate_select_only(f"SELECT * FROM {table_name}")
+        upper_name = table_name.upper()
+        if upper_name not in TABLE_DESCRIPTIONS:
+            return {"success": False, "error": f"テーブル '{upper_name}' はサポートされていません"}
+        clamped_rows = max(1, min(num_rows, _MAX_QUERY_ROWS))
         manager = _get_connection_manager()
         df = manager.fetch_dataframe(
-            f"SELECT * FROM {table_name.lower()} LIMIT %s",
-            params=(num_rows,),
+            f"SELECT * FROM {upper_name.lower()} LIMIT %s",
+            params=(clamped_rows,),
         )
         return {
             "success": True,
-            "table_name": table_name.upper(),
+            "table_name": upper_name,
             "rows": len(df),
             "columns": df.columns.tolist(),
             "data": _df_to_records(df),
         }
-    except (ValueError, MykeibaDBError) as e:
+    except MykeibaDBError as e:
         return {"success": False, "error": str(e)}
 
 
@@ -286,21 +292,26 @@ def get_column_examples(table_name: str, column_name: str, limit: int = 10) -> d
         dict: カラムの値例リストを含む辞書
     """
     try:
+        upper_name = table_name.upper()
+        if upper_name not in TABLE_DESCRIPTIONS:
+            return {"success": False, "error": f"テーブル '{upper_name}' はサポートされていません"}
+        if not re.fullmatch(r"[A-Za-z0-9_]+", column_name):
+            return {"success": False, "error": "column_name は英数字とアンダースコアのみ使用可能です"}
+        clamped_limit = max(1, min(limit, _MAX_QUERY_ROWS))
         col_lower = column_name.lower()
-        tbl_lower = table_name.lower()
+        tbl_lower = upper_name.lower()
         sql = f"SELECT DISTINCT {col_lower} FROM {tbl_lower} ORDER BY {col_lower} LIMIT %s"
-        validate_select_only(sql)
         manager = _get_connection_manager()
-        df = manager.fetch_dataframe(sql, params=(limit,))
+        df = manager.fetch_dataframe(sql, params=(clamped_limit,))
         values = df[col_lower].tolist() if col_lower in df.columns else []
         return {
             "success": True,
-            "table_name": table_name.upper(),
+            "table_name": upper_name,
             "column_name": column_name.upper(),
             "examples": values,
             "count": len(values),
         }
-    except (ValueError, MykeibaDBError) as e:
+    except MykeibaDBError as e:
         return {"success": False, "error": str(e)}
 
 
@@ -325,9 +336,12 @@ def schema_table_detail_resource(table_name: str) -> str:
         テーブル詳細情報のJSON文字列
     """
     upper = table_name.upper()
-    info = TABLE_DESCRIPTIONS.get(upper, {})
+    if upper not in TABLE_DESCRIPTIONS:
+        return json.dumps({"success": False, "error": f"テーブル '{upper}' はサポートされていません"})
+    info = TABLE_DESCRIPTIONS[upper]
     return json.dumps(
         {
+            "success": True,
             "table_name": upper,
             "description": info.get("description", ""),
             "primary_key": info.get("primary_key", ""),
