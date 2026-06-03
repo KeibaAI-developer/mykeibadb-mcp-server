@@ -1,11 +1,10 @@
 """mykeibadb MCP Server."""
 
-import math
 import os
 import sys
 from collections.abc import Callable
 from datetime import date
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from mcp.server.fastmcp import FastMCP
@@ -96,26 +95,29 @@ def get_table_data(
     Returns:
         dict: rows/columns/dataを含む取得結果
     """
-    manager = _get_connection_manager()
-    accessor = TableAccessor(manager)
+    try:
+        manager = _get_connection_manager()
+        accessor = TableAccessor(manager)
 
-    start = date.fromisoformat(start_date) if start_date else None
-    end = date.fromisoformat(end_date) if end_date else None
+        start = date.fromisoformat(start_date) if start_date else None
+        end = date.fromisoformat(end_date) if end_date else None
 
-    if start or end:
-        df = accessor.get_table_data_with_period(table_name, filters, start, end)
-    else:
-        df = accessor.get_table_data(table_name, filters)
+        if start or end:
+            df = accessor.get_table_data_with_period(table_name, filters, start, end)
+        else:
+            df = accessor.get_table_data(table_name, filters)
 
-    if convert_codes:
-        df = _apply_code_conversion(df)
+        if convert_codes:
+            df = _apply_code_conversion(df)
 
-    return {
-        "success": True,
-        "rows": len(df),
-        "columns": df.columns.tolist(),
-        "data": _df_to_records(df),
-    }
+        return {
+            "success": True,
+            "rows": len(df),
+            "columns": df.columns.tolist(),
+            "data": _df_to_records(df),
+        }
+    except (ValueError, MykeibaDBError) as e:
+        return {"success": False, "error": str(e)}
 
 
 def _get_connection_manager() -> ConnectionManager:
@@ -137,11 +139,8 @@ def _apply_code_conversion(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _df_to_records(df: pd.DataFrame) -> list[dict[str, Any]]:
-    records = df.to_dict(orient="records")
-    return [
-        {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
-        for row in records
-    ]
+    records = cast(list[dict[str, Any]], df.to_dict(orient="records"))
+    return [{k: (None if pd.isna(v) else v) for k, v in row.items()} for row in records]
 
 
 def _check_db_connection() -> None:

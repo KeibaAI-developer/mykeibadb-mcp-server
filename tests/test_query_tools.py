@@ -1,15 +1,15 @@
 """execute_query / get_table_data ツールのモックテスト."""
 
 import pandas as pd
-import pytest
 from mykeibadb.exceptions import QueryExecutionError
+from pytest_mock import MockerFixture
 
 from mykeibadb_mcp_server.server import execute_query, get_table_data
 
 # 正常系: execute_query
 
 
-def test_execute_query_returns_success(mocker: pytest.MonkeyPatch) -> None:
+def test_execute_query_returns_success(mocker: MockerFixture) -> None:
     """有効なSELECT文でsuccessレスポンスが返される."""
     df = pd.DataFrame({"race_code": ["202501010101"], "race_name": ["テストレース"]})
     mock_manager = mocker.MagicMock()
@@ -25,7 +25,7 @@ def test_execute_query_returns_success(mocker: pytest.MonkeyPatch) -> None:
     assert result["note"] is None
 
 
-def test_execute_query_truncates_at_200_rows(mocker: pytest.MonkeyPatch) -> None:
+def test_execute_query_truncates_at_200_rows(mocker: MockerFixture) -> None:
     """200行超の場合は先頭200行のみ返してnoteを設定する."""
     df = pd.DataFrame({"id": range(250)})
     mock_manager = mocker.MagicMock()
@@ -39,7 +39,7 @@ def test_execute_query_truncates_at_200_rows(mocker: pytest.MonkeyPatch) -> None
     assert result["note"] is not None
 
 
-def test_execute_query_no_truncation_at_200_rows(mocker: pytest.MonkeyPatch) -> None:
+def test_execute_query_no_truncation_at_200_rows(mocker: MockerFixture) -> None:
     """ちょうど200行の場合はnoteがNoneになる."""
     df = pd.DataFrame({"id": range(200)})
     mock_manager = mocker.MagicMock()
@@ -63,7 +63,7 @@ def test_execute_query_returns_error_for_dangerous_sql() -> None:
     assert "error" in result
 
 
-def test_execute_query_returns_error_for_db_error(mocker: pytest.MonkeyPatch) -> None:
+def test_execute_query_returns_error_for_db_error(mocker: MockerFixture) -> None:
     """DB実行エラーでsuccessFalseが返される."""
     mock_manager = mocker.MagicMock()
     mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
@@ -77,7 +77,7 @@ def test_execute_query_returns_error_for_db_error(mocker: pytest.MonkeyPatch) ->
 
 # 正常系: get_table_data
 
-def test_get_table_data_returns_success(mocker: pytest.MonkeyPatch) -> None:
+def test_get_table_data_returns_success(mocker: MockerFixture) -> None:
     """有効なテーブル名でデータが返される."""
     df = pd.DataFrame({"race_code": ["202501010101"], "grade_code": ["A"]})
     mock_manager = mocker.MagicMock()
@@ -94,7 +94,7 @@ def test_get_table_data_returns_success(mocker: pytest.MonkeyPatch) -> None:
     mock_accessor.get_table_data.assert_called_once_with("RACE_SHOSAI", None)
 
 
-def test_get_table_data_with_filters(mocker: pytest.MonkeyPatch) -> None:
+def test_get_table_data_with_filters(mocker: MockerFixture) -> None:
     """フィルタ条件がTableAccessorに渡される."""
     df = pd.DataFrame({"race_code": ["202501010101"]})
     mock_manager = mocker.MagicMock()
@@ -110,7 +110,7 @@ def test_get_table_data_with_filters(mocker: pytest.MonkeyPatch) -> None:
     mock_accessor.get_table_data.assert_called_once_with("RACE_SHOSAI", filters)
 
 
-def test_get_table_data_with_date_range_uses_period_method(mocker: pytest.MonkeyPatch) -> None:
+def test_get_table_data_with_date_range_uses_period_method(mocker: MockerFixture) -> None:
     """期間指定時はget_table_data_with_periodが呼ばれる."""
     df = pd.DataFrame({"race_code": ["202501010101"]})
     mock_manager = mocker.MagicMock()
