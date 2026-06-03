@@ -26,6 +26,13 @@ from mykeibadb.exceptions import MykeibaDBConnectionError, MykeibaDBError
 from mykeibadb.tables import TableAccessor
 
 from mykeibadb_mcp_server.guard import validate_select_only
+from mykeibadb_mcp_server.high_level_api import (
+    analyze_kishu_seiseki,
+    analyze_ninki_seiseki,
+    analyze_sire_seiseki,
+    analyze_waku_seiseki,
+    get_uma_rekisen,
+)
 from mykeibadb_mcp_server.schema.code_descriptions import (
     BABAJOTAI_CODE,
     GRADE_CODE,
@@ -423,6 +430,107 @@ def query_examples_resource() -> str:
         },
     ]
     return json.dumps({"examples": examples}, ensure_ascii=False)
+
+
+@mcp.tool()
+def tool_analyze_ninki_seiseki(
+    ninki: int = 1,
+    keibajo: str | None = None,
+    grade: str | None = None,
+    year_from: str | None = None,
+    kyori: int | None = None,
+) -> dict[str, Any]:
+    """指定人気順位の勝率・複勝率・出走数・勝利数を集計する。
+
+    Args:
+        ninki (int): 人気順位（デフォルト1）
+        keibajo (str | None): 競馬場コード（例: '05'=東京）
+        grade (str | None): グレードコード（例: 'A'=GI）
+        year_from (str | None): 集計開始年（4桁文字列、例: '2020'）
+        kyori (int | None): 距離（メートル単位）
+
+    Returns:
+        dict: 出走数・勝利数・勝率・複勝数・複勝率を含む辞書
+    """
+    return analyze_ninki_seiseki(_get_connection_manager(), ninki, keibajo, grade, year_from, kyori)
+
+
+@mcp.tool()
+def tool_analyze_kishu_seiseki(
+    kishu_name: str,
+    keibajo: str | None = None,
+    year_from: str | None = None,
+    kyori: int | None = None,
+) -> dict[str, Any]:
+    """騎手名（部分一致）で勝率・複勝率・騎乗数を集計する。
+
+    Args:
+        kishu_name (str): 騎手名（部分一致で検索）
+        keibajo (str | None): 競馬場コード
+        year_from (str | None): 集計開始年
+        kyori (int | None): 距離（メートル）
+
+    Returns:
+        dict: 騎手名・騎乗数・勝利数・勝率・複勝率を含む辞書
+    """
+    return analyze_kishu_seiseki(_get_connection_manager(), kishu_name, keibajo, year_from, kyori)
+
+
+@mcp.tool()
+def tool_analyze_sire_seiseki(
+    sire_name: str,
+    keibajo: str | None = None,
+    kyori: int | None = None,
+    year_from: str | None = None,
+) -> dict[str, Any]:
+    """種牡馬（父馬）名で産駒の勝率・複勝率を集計する。
+
+    Args:
+        sire_name (str): 種牡馬名（部分一致で検索）
+        keibajo (str | None): 競馬場コード
+        kyori (int | None): 距離（メートル）
+        year_from (str | None): 集計開始年
+
+    Returns:
+        dict: 種牡馬名・産駒出走数・勝利数・勝率・複勝率を含む辞書
+    """
+    return analyze_sire_seiseki(_get_connection_manager(), sire_name, keibajo, kyori, year_from)
+
+
+@mcp.tool()
+def tool_get_uma_rekisen(
+    uma_name: str,
+    year_from: str | None = None,
+) -> dict[str, Any]:
+    """馬名（部分一致）で過去レース戦績一覧を取得する。
+
+    Args:
+        uma_name (str): 馬名（部分一致で検索）
+        year_from (str | None): 集計開始年
+
+    Returns:
+        dict: 日付・競馬場・レース名・着順・タイム・騎手を含む戦績リスト
+    """
+    return get_uma_rekisen(_get_connection_manager(), uma_name, year_from)
+
+
+@mcp.tool()
+def tool_analyze_waku_seiseki(
+    keibajo: str | None = None,
+    kyori: int | None = None,
+    year_from: str | None = None,
+) -> dict[str, Any]:
+    """枠番（1〜8）別の勝率・複勝率を集計する。
+
+    Args:
+        keibajo (str | None): 競馬場コード
+        kyori (int | None): 距離（メートル）
+        year_from (str | None): 集計開始年
+
+    Returns:
+        dict: 枠番ごとの出走数・勝利数・勝率・複勝率を含む辞書
+    """
+    return analyze_waku_seiseki(_get_connection_manager(), keibajo, kyori, year_from)
 
 
 def _get_connection_manager() -> ConnectionManager:
