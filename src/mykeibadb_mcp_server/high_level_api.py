@@ -735,29 +735,31 @@ def analyze_race_chakudo(
         cte_parts: list[str] = []
         join_sql = ""
 
-        using_cw = course_kubun is not None and week_in_course is not None
-        if using_cw:
+        if course_kubun is not None and week_in_course is not None:
             cte_sql, join_sql = _build_course_week_cte(
-                keibajo, course_kubun, week_in_course, params  # type: ignore[arg-type]
+                keibajo, course_kubun, week_in_course, params
             )
             cte_parts.append(cte_sql)
+            using_cw = True
+        else:
+            using_cw = False
 
         cte_parts.append(
             """fukusho_payouts AS (
             SELECT race_code, fukusho1_umaban AS umaban,
                    CAST(TRIM(fukusho1_haraimodoshikin) AS INTEGER) AS payout
             FROM haraimodoshi
-            WHERE TRIM(fukusho1_haraimodoshikin) ~ '^[0-9]+'
+            WHERE TRIM(fukusho1_haraimodoshikin) ~ '^[0-9]+$'
               AND TRIM(fukusho1_haraimodoshikin)::INTEGER > 0
             UNION ALL
             SELECT race_code, fukusho2_umaban,
                    CAST(TRIM(fukusho2_haraimodoshikin) AS INTEGER)
-            FROM haraimodoshi WHERE TRIM(fukusho2_haraimodoshikin) ~ '^[0-9]+'
+            FROM haraimodoshi WHERE TRIM(fukusho2_haraimodoshikin) ~ '^[0-9]+$'
               AND TRIM(fukusho2_haraimodoshikin)::INTEGER > 0
             UNION ALL
             SELECT race_code, fukusho3_umaban,
                    CAST(TRIM(fukusho3_haraimodoshikin) AS INTEGER)
-            FROM haraimodoshi WHERE TRIM(fukusho3_haraimodoshikin) ~ '^[0-9]+'
+            FROM haraimodoshi WHERE TRIM(fukusho3_haraimodoshikin) ~ '^[0-9]+$'
               AND TRIM(fukusho3_haraimodoshikin)::INTEGER > 0
         )"""
         )
@@ -765,14 +767,14 @@ def analyze_race_chakudo(
             """tansho_payouts AS (
             SELECT race_code, tansho1_umaban AS umaban,
                    CAST(TRIM(tansho1_haraimodoshikin) AS INTEGER) AS payout
-            FROM haraimodoshi WHERE TRIM(tansho1_haraimodoshikin) ~ '^[0-9]+'
+            FROM haraimodoshi WHERE TRIM(tansho1_haraimodoshikin) ~ '^[0-9]+$'
               AND TRIM(tansho1_haraimodoshikin)::INTEGER > 0
         )"""
         )
 
         where_parts: list[str] = [
+            "u.kakutei_chakujun ~ '^[0-9]{2}$'",
             "u.kakutei_chakujun != '00'",
-            "u.kakutei_chakujun ~ '^[0-9]+'",
         ]
         if race_name:
             where_parts.append("r.race_name LIKE %s")

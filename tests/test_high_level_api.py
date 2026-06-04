@@ -631,6 +631,25 @@ def test_analyze_race_chakudo_keibajo_in_where_without_cw(mock_manager: MockerFi
     assert "05" in kwargs["params"]
 
 
+def test_analyze_race_chakudo_with_course_week_filter(mock_manager: MockerFixture) -> None:
+    """course_kubun+week_in_course指定時にcw_targetがSQLに含まれkeibajoはCTE側で処理される."""
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df()
+
+    analyze_race_chakudo(
+        mock_manager,
+        group_expr="u.tansho_ninkijun",
+        sort_expr="CAST(u.tansho_ninkijun AS INTEGER)",
+        keibajo="05",
+        course_kubun="C",
+        week_in_course=1,
+    )
+
+    sql, kwargs = mock_manager.fetch_dataframe.call_args
+    assert "cw_target" in sql[0]
+    assert "05" in kwargs["params"]
+    assert "r.keibajo_code = %s" not in sql[0]
+
+
 # 準正常系: analyze_race_chakudo
 
 
