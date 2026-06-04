@@ -30,7 +30,7 @@ def analyze_ninki_seiseki(
     try:
         ninki_str = str(ninki).zfill(2)
         where_clauses = [
-            "u.ninki_juni = %s",
+            "u.tansho_ninkijun = %s",
             "u.kakutei_chakujun != '00'",
         ]
         params: list[Any] = [ninki_str]
@@ -99,7 +99,7 @@ def analyze_kishu_seiseki(
     """
     try:
         where_clauses = [
-            "km.kishu_mei LIKE %s",
+            "km.kishumei LIKE %s",
             "u.kakutei_chakujun != '00'",
         ]
         params: list[Any] = [f"%{kishu_name}%"]
@@ -117,7 +117,7 @@ def analyze_kishu_seiseki(
         where = " AND ".join(where_clauses)
         sql = f"""
             SELECT
-                km.kishu_mei,
+                km.kishumei,
                 COUNT(*) AS total,
                 COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
                     THEN 1 ELSE 0 END), 0) AS wins,
@@ -127,7 +127,7 @@ def analyze_kishu_seiseki(
             JOIN race_shosai r ON u.race_code = r.race_code
             JOIN kishu_master km ON u.kishu_code = km.kishu_code
             WHERE {where}
-            GROUP BY km.kishu_mei
+            GROUP BY km.kishumei
             ORDER BY wins DESC
         """
         df = manager.fetch_dataframe(sql, params=tuple(params))
@@ -137,7 +137,7 @@ def analyze_kishu_seiseki(
             wins = int(row["wins"])
             fukusho = int(row["fukusho"])
             results.append({
-                "kishu_mei": row["kishu_mei"],
+                "kishumei": row["kishumei"],
                 "total": total,
                 "wins": wins,
                 "win_rate": round(wins / total * 100, 1) if total > 0 else 0.0,
@@ -170,7 +170,7 @@ def analyze_sire_seiseki(
     """
     try:
         where_clauses = [
-            "k.chichi_uma_bamei LIKE %s",
+            "km2.ketto1_bamei LIKE %s",
             "u.kakutei_chakujun != '00'",
         ]
         params: list[Any] = [f"%{sire_name}%"]
@@ -188,7 +188,7 @@ def analyze_sire_seiseki(
         where = " AND ".join(where_clauses)
         sql = f"""
             SELECT
-                k.chichi_uma_bamei AS sire_name,
+                km2.ketto1_bamei AS sire_name,
                 COUNT(*) AS total,
                 COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
                     THEN 1 ELSE 0 END), 0) AS wins,
@@ -196,9 +196,9 @@ def analyze_sire_seiseki(
                     THEN 1 ELSE 0 END), 0) AS fukusho
             FROM umagoto_race_joho u
             JOIN race_shosai r ON u.race_code = r.race_code
-            JOIN keito_joho2 k ON u.ketto_toroku_bango = k.ketto_toroku_bango
+            JOIN kyosoba_master2 km2 ON u.ketto_toroku_bango = km2.ketto_toroku_bango
             WHERE {where}
-            GROUP BY k.chichi_uma_bamei
+            GROUP BY km2.ketto1_bamei
             ORDER BY wins DESC
         """
         df = manager.fetch_dataframe(sql, params=tuple(params))
@@ -250,13 +250,13 @@ def get_uma_rekisen(
                 r.kaisai_nen,
                 r.kaisai_gappi,
                 r.keibajo_code,
-                r.race_name,
+                r.kyosomei_hondai AS race_name,
                 r.grade_code,
                 r.kyori,
                 u.kakutei_chakujun,
                 u.soha_time,
-                u.kishu_code,
-                u.ninki_juni,
+                u.kishumei_ryakusho,
+                u.tansho_ninkijun,
                 u.tansho_odds
             FROM umagoto_race_joho u
             JOIN race_shosai r ON u.race_code = r.race_code
@@ -277,8 +277,8 @@ def get_uma_rekisen(
                 "kyori": row["kyori"],
                 "kakutei_chakujun": row["kakutei_chakujun"],
                 "soha_time": row["soha_time"],
-                "kishu_code": row["kishu_code"],
-                "ninki_juni": row["ninki_juni"],
+                "kishumei_ryakusho": row["kishumei_ryakusho"],
+                "tansho_ninkijun": row["tansho_ninkijun"],
                 "tansho_odds": row["tansho_odds"],
             })
         return {"success": True, "results": records, "count": len(records)}

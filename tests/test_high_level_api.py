@@ -68,7 +68,7 @@ def test_analyze_ninki_seiseki_zero_total_returns_zero_rate(mock_manager: Mocker
 def test_analyze_kishu_seiseki_returns_success(mock_manager: MockerFixture) -> None:
     """analyze_kishu_seisekiがsuccess=Trueを返す."""
     df = pd.DataFrame({
-        "kishu_mei": ["武豊"],
+        "kishumei": ["武豊"],
         "total": [500],
         "wins": [100],
         "fukusho": [200],
@@ -80,7 +80,7 @@ def test_analyze_kishu_seiseki_returns_success(mock_manager: MockerFixture) -> N
     assert result["success"] is True
     assert result["count"] == 1
     row = result["results"][0]
-    assert row["kishu_mei"] == "武豊"
+    assert row["kishumei"] == "武豊"
     assert row["win_rate"] == 20.0
 
 
@@ -132,8 +132,8 @@ def test_get_uma_rekisen_returns_success(mock_manager: MockerFixture) -> None:
         "kyori": [2000],
         "kakutei_chakujun": ["01"],
         "soha_time": ["1576"],
-        "kishu_code": ["01143"],
-        "ninki_juni": ["01"],
+        "kishumei_ryakusho": ["ルメール"],
+        "tansho_ninkijun": ["01"],
         "tansho_odds": ["15"],
     })
     mock_manager.fetch_dataframe.return_value = df
@@ -157,8 +157,8 @@ def test_get_uma_rekisen_with_year_from(mock_manager: MockerFixture) -> None:
         "kyori": [],
         "kakutei_chakujun": [],
         "soha_time": [],
-        "kishu_code": [],
-        "ninki_juni": [],
+        "kishumei_ryakusho": [],
+        "tansho_ninkijun": [],
         "tansho_odds": [],
     })
     mock_manager.fetch_dataframe.return_value = df
