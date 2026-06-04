@@ -8,6 +8,7 @@ from mykeibadb_mcp_server.high_level_api import (
     analyze_chokyo_debut_seiseki,
     analyze_kishu_seiseki,
     analyze_ninki_seiseki,
+    analyze_race_chakudo,
     analyze_sire_seiseki,
     analyze_waku_seiseki,
     get_uma_chokyo,
@@ -525,6 +526,124 @@ def test_analyze_chokyo_debut_seiseki_returns_error_on_db_failure(
         mock_manager,
         debut_date_from="20250101",
         debut_date_to="20251231",
+    )
+
+    assert result["success"] is False
+    assert "error" in result
+
+
+# 正常系: analyze_race_chakudo
+
+
+def _make_chakudo_df() -> pd.DataFrame:
+    return pd.DataFrame({
+        "grp": ["1人気", "2人気", "3人気"],
+        "sort_key": [1, 2, 3],
+        "total": [100, 100, 100],
+        "wins": [30, 20, 15],
+        "second": [20, 25, 20],
+        "third": [15, 18, 22],
+        "chakugai": [35, 37, 43],
+        "win_rate": [30.0, 20.0, 15.0],
+        "fukusho_rate": [65.0, 63.0, 57.0],
+        "tansho_kaishuu": [85.0, 90.0, 95.0],
+        "fukusho_kaishuu": [78.0, 82.0, 80.0],
+    })
+
+
+def test_analyze_race_chakudo_returns_success(mock_manager: MockerFixture) -> None:
+    """基本的な集計でsuccess=Trueを返す."""
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df()
+
+    result = analyze_race_chakudo(
+        mock_manager,
+        group_expr="u.tansho_ninkijun",
+        sort_expr="CAST(u.tansho_ninkijun AS INTEGER)",
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 3
+    row = result["results"][0]
+    assert row["group"] == "1人気"
+    assert row["total"] == 100
+    assert row["wins"] == 30
+    assert row["win_rate"] == 30.0
+    assert row["tansho_kaishuu"] == 85.0
+    assert row["fukusho_kaishuu"] == 78.0
+
+
+def test_analyze_race_chakudo_with_filters(mock_manager: MockerFixture) -> None:
+    """フィルタ条件がSQLのWHERE句に反映される."""
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df()
+
+    analyze_race_chakudo(
+        mock_manager,
+        group_expr="u.tansho_ninkijun",
+        sort_expr="CAST(u.tansho_ninkijun AS INTEGER)",
+        race_name="東京優駿",
+        year_from="2016",
+        year_to="2025",
+    )
+
+    sql, kwargs = mock_manager.fetch_dataframe.call_args
+    assert "race_name LIKE %s" in sql[0]
+    assert "kaisai_nen >= %s" in sql[0]
+    assert "kaisai_nen <= %s" in sql[0]
+    params = kwargs["params"]
+    assert "%東京優駿%" in params
+    assert "2016" in params
+    assert "2025" in params
+
+
+def test_analyze_race_chakudo_empty_result(mock_manager: MockerFixture) -> None:
+    """空結果でcount=0を返す."""
+    empty_df = pd.DataFrame(columns=[
+        "grp", "sort_key", "total", "wins", "second", "third",
+        "chakugai", "win_rate", "fukusho_rate", "tansho_kaishuu", "fukusho_kaishuu",
+    ])
+    mock_manager.fetch_dataframe.return_value = empty_df
+
+    result = analyze_race_chakudo(
+        mock_manager,
+        group_expr="u.tansho_ninkijun",
+        sort_expr="CAST(u.tansho_ninkijun AS INTEGER)",
+        race_name="存在しないレース",
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 0
+    assert result["results"] == []
+
+
+def test_analyze_race_chakudo_keibajo_in_where_without_cw(mock_manager: MockerFixture) -> None:
+    """course_kubunなし時はkeibajoがWHERE句に入る."""
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df()
+
+    analyze_race_chakudo(
+        mock_manager,
+        group_expr="r.keibajo_code",
+        sort_expr="r.keibajo_code",
+        keibajo="05",
+    )
+
+    sql, kwargs = mock_manager.fetch_dataframe.call_args
+    assert "keibajo_code = %s" in sql[0]
+    assert "05" in kwargs["params"]
+
+
+# 準正常系: analyze_race_chakudo
+
+
+def test_analyze_race_chakudo_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
+    """DBエラー時にsuccess=Falseが返る."""
+    from mykeibadb.exceptions import QueryExecutionError
+
+    mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
+
+    result = analyze_race_chakudo(
+        mock_manager,
+        group_expr="u.tansho_ninkijun",
+        sort_expr="CAST(u.tansho_ninkijun AS INTEGER)",
     )
 
     assert result["success"] is False
