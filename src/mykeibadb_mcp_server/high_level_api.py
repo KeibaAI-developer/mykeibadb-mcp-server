@@ -10,12 +10,10 @@ from mykeibadb.analytics import (
     Subject,
     analyze_chakudo,
 )
-from mykeibadb.analytics import (
-    analyze_chokyo_debut_seiseki as analytics_analyze_chokyo_debut_seiseki,
-)
+from mykeibadb.analytics import analyze_chokyo_debut_seiseki as _analyze_chokyo_debut_seiseki
 from mykeibadb.analytics import analyze_subject_chakudo
-from mykeibadb.analytics import get_uma_chokyo as analytics_get_uma_chokyo
-from mykeibadb.analytics import get_uma_rekisen as analytics_get_uma_rekisen
+from mykeibadb.analytics import get_uma_chokyo as _get_uma_chokyo
+from mykeibadb.analytics import get_uma_rekisen as _get_uma_rekisen
 from mykeibadb.connection import ConnectionManager
 
 
@@ -172,7 +170,7 @@ def get_uma_rekisen(
         course_kubun=course_kubun,
         week_in_course=week_in_course,
     )
-    return analytics_get_uma_rekisen(manager, uma_name=uma_name, condition=condition)
+    return _get_uma_rekisen(manager, uma_name=uma_name, condition=condition)
 
 
 def analyze_waku_seiseki(
@@ -237,7 +235,7 @@ def get_uma_chokyo(
     Returns:
         dict: 馬名・デビュー日・ウッドチップ/坂路調教レコード一覧を含む辞書
     """
-    rekisen_result = analytics_get_uma_rekisen(manager, uma_name=uma_name)
+    rekisen_result = _get_uma_rekisen(manager, uma_name=uma_name)
     if not rekisen_result["success"]:
         return rekisen_result
 
@@ -258,7 +256,7 @@ def get_uma_chokyo(
         date_from = f"{year_from}0101" if year_from else None
         date_to = info["debut_date"] if before_debut else None
 
-        chokyo_result = analytics_get_uma_chokyo(
+        chokyo_result = _get_uma_chokyo(
             manager, ketto_toroku_bango=ketto, date_from=date_from, date_to=date_to
         )
         if not chokyo_result["success"]:
@@ -324,7 +322,7 @@ def analyze_chokyo_debut_seiseki(
             course="hanro", metric="lap", furlong=1,
             max_value=hanro_laptime_1f_max, tracen_kubun=tracen_kubun,
         ))
-    return analytics_analyze_chokyo_debut_seiseki(
+    return _analyze_chokyo_debut_seiseki(
         manager, debut_date_from, debut_date_to, condition=condition
     )
 
