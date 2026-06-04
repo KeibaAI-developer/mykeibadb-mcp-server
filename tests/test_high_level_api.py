@@ -208,7 +208,7 @@ def test_analyze_waku_seiseki_with_filters(mock_manager: MockerFixture) -> None:
 
 
 def test_analyze_waku_seiseki_with_course_week_filter(mock_manager: MockerFixture) -> None:
-    """course_kubunとweek_in_courseを指定可能."""
+    """course_kubunとweek_in_courseを指定するとCTEフィルタが適用される."""
     df = pd.DataFrame({
         "wakuban": ["1"],
         "total": [30],
@@ -226,9 +226,16 @@ def test_analyze_waku_seiseki_with_course_week_filter(mock_manager: MockerFixtur
     assert result["count"] == 1
     assert result["results"][0]["win_rate"] == 20.0
 
+    call_args = mock_manager.fetch_dataframe.call_args
+    sql = call_args[0][0]
+    params = call_args[1]["params"]
+    assert "cw_target" in sql
+    assert "C" in params
+    assert 2 in params
+
 
 def test_analyze_ninki_seiseki_with_course_week_filter(mock_manager: MockerFixture) -> None:
-    """course_kubunとweek_in_courseを指定可能."""
+    """course_kubunとweek_in_courseを指定するとCTEフィルタが適用される."""
     df = pd.DataFrame({"total": [80], "wins": [16], "fukusho": [32]})
     mock_manager.fetch_dataframe.return_value = df
 
@@ -239,6 +246,13 @@ def test_analyze_ninki_seiseki_with_course_week_filter(mock_manager: MockerFixtu
     assert result["success"] is True
     assert result["total"] == 80
     assert result["win_rate"] == 20.0
+
+    call_args = mock_manager.fetch_dataframe.call_args
+    sql = call_args[0][0]
+    params = call_args[1]["params"]
+    assert "cw_target" in sql
+    assert "C" in params
+    assert 2 in params
 
 
 # 準正常系: DBエラー
