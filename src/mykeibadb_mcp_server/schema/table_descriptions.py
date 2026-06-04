@@ -40,7 +40,7 @@ TABLE_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             ),
             "KOHAN_3F": "後3ハロンタイム。3桁整数文字列、単位は0.1秒（例: '355'=35.5秒）。'999'=中止等。",
             "TANSHO_ODDS": "単勝オッズ。3桁整数文字列、単位は0.1倍（例: '152'=15.2倍）。",
-            "NINKI_JUNI": "単勝人気順位。2桁文字列ゼロ埋め（例: '01'=1番人気）。",
+            "TANSHO_NINKIJUN": "単勝人気順位。2桁文字列ゼロ埋め（例: '01'=1番人気）。",
             "FUTAN_JURYO": "負担重量。3桁整数、単位は0.1kg（例: '560'=56.0kg）。",
             "BATAIJU": "馬体重（kg）。3桁整数。'000'=未計測。",
             "ZOGEN_SA": "馬体重増減差。3桁整数（符号付き文字列）。'999'=計測不能。",
@@ -93,10 +93,10 @@ TABLE_DESCRIPTIONS: dict[str, dict[str, Any]] = {
                 "4ハロン(800M→0M)の合計タイム。4桁文字列、単位は0.1秒。"
                 "測定不良='0000'。SQLでは CAST(... AS INTEGER) <= 525 のように比較。"
             ),
-            "LAPTIME_1FURLONG": "ラスト1ハロンのラップタイム。3桁文字列、単位は0.1秒。測定不良='000'。",
-            "LAPTIME_2FURLONG": "ラップタイム(400M→200M)。3桁文字列、単位は0.1秒。測定不良='000'。",
-            "LAPTIME_3FURLONG": "ラップタイム(600M→400M)。3桁文字列、単位は0.1秒。測定不良='000'。",
-            "LAPTIME_4FURLONG": "ラップタイム(800M→600M)。3桁文字列、単位は0.1秒。測定不良='000'。",
+            "LAP_TIME_1FURLONG": "ラスト1ハロンのラップタイム。3桁文字列、単位は0.1秒。測定不良='000'。",
+            "LAP_TIME_2FURLONG": "ラップタイム(400M→200M)。3桁文字列、単位は0.1秒。測定不良='000'。",
+            "LAP_TIME_3FURLONG": "ラップタイム(600M→400M)。3桁文字列、単位は0.1秒。測定不良='000'。",
+            "LAP_TIME_4FURLONG": "ラップタイム(800M→600M)。3桁文字列、単位は0.1秒。測定不良='000'。",
         },
     },
     "BAMEI_IMI_YURAI": {
@@ -248,14 +248,14 @@ TABLE_DESCRIPTIONS: dict[str, dict[str, Any]] = {
         },
     },
     "KEITO_JOHO2": {
-        "description": "血統情報2。競走馬の父・母・父父・母父等の血統詳細。",
-        "primary_key": "KETTO_TOROKU_BANGO",
+        "description": "血統系統情報。血統系統ID・系統名・説明を管理するマスタ。",
+        "primary_key": "HANSHOKU_TOROKU_BANGO",
         "date_column": {},
         "column_notes": {
-            "KETTO_TOROKU_BANGO": "血統登録番号。10桁文字列。",
-            "CHICHI_UMA_BAMEI": "父馬の馬名。",
-            "HAHA_UMA_BAMEI": "母馬の馬名。",
-            "HAHA_CHICHI_UMA_BAMEI": "母父馬の馬名（BMS）。",
+            "HANSHOKU_TOROKU_BANGO": "繁殖登録番号。",
+            "KEITO_ID": "血統系統ID。",
+            "KEITO_MEI": "血統系統名。",
+            "KEITO_SETSUMEI": "血統系統の説明文。",
         },
     },
     "KISHU_HENKO": {

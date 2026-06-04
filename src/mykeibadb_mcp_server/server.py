@@ -218,9 +218,10 @@ def get_sql_generation_prompt(query_text: str) -> dict[str, Any]:
 
     encoding_notes = (
         "## エンコーディング共通パターン\n"
-        "- タイム系カラム（TIME_GOKEI_*, LAPTIME_*, KOHAN_3F等）: "
-        "整数文字列、単位は0.1秒。0000/9999はセンチネル値（無効）。"
+        "- 4桁タイム系（TIME_GOKEI_*等）: 整数文字列、単位は0.1秒。0000/9999はセンチネル値（無効）。"
         "比較時は CAST(col AS INTEGER) <= 825 のように整数キャストして×10の閾値で比較。\n"
+        "- 3桁タイム系（LAPTIME_*(WOODCHIP), LAP_TIME_*(HANRO), KOHAN_3F等）: "
+        "整数文字列、単位は0.1秒。000/999はセンチネル値（無効）。\n"
         "- 走破タイム（SOHA_TIME等）: MSSS形式（例: '2315'=2分31秒5）。0000=未計測。\n"
         "- 単勝オッズ（TANSHO_ODDS）: 整数文字列、単位は0.1倍（例: '152'=15.2倍）。\n"
         "- 着順（KAKUTEI_CHAKUJUN）: 2桁ゼロ埋め文字列（例: '01'=1着）。0=取消等。\n"
@@ -390,7 +391,8 @@ def query_examples_resource() -> str:
         {
             "title": "G1レース一覧（2025年）",
             "sql": (
-                "SELECT race_code, race_name, kaisai_nen, kaisai_gappi, keibajo_code "
+                "SELECT race_code, kyosomei_hondai AS race_name, kaisai_nen,"
+                " kaisai_gappi, keibajo_code "
                 "FROM race_shosai "
                 "WHERE kaisai_nen = '2025' AND grade_code = 'A' "
                 "ORDER BY kaisai_gappi"
@@ -399,7 +401,8 @@ def query_examples_resource() -> str:
         {
             "title": "武豊騎手の直近成績",
             "sql": (
-                "SELECT u.race_code, u.kakutei_chakujun, u.kishu_code, r.race_name "
+                "SELECT u.race_code, u.kakutei_chakujun, u.kishu_code,"
+                " r.kyosomei_hondai AS race_name "
                 "FROM umagoto_race_joho u "
                 "JOIN race_shosai r ON u.race_code = r.race_code "
                 "WHERE u.kishu_code = '00666' "
@@ -415,7 +418,7 @@ def query_examples_resource() -> str:
                 " ROUND(100.0 * SUM(CASE WHEN CAST(kakutei_chakujun AS INTEGER) <= 3"
                 " THEN 1 ELSE 0 END) / COUNT(*), 1) AS fukusho_rate"
                 " FROM umagoto_race_joho"
-                " WHERE ninki_juni = '01' AND kakutei_chakujun != '00'"
+                " WHERE tansho_ninkijun = '01' AND kakutei_chakujun != '00'"
             ),
         },
         {
