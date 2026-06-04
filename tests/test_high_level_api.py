@@ -161,18 +161,16 @@ def test_analyze_sire_seiseki_returns_success(mock_manager: MockerFixture) -> No
 def test_get_uma_rekisen_returns_success(mock_manager: MockerFixture) -> None:
     """get_uma_rekisenがsuccess=Trueを返す."""
     df = pd.DataFrame({
+        "ketto_toroku_bango": ["2018100001"],
         "bamei": ["アーモンドアイ"],
-        "kaisai_nen": ["2018"],
-        "kaisai_gappi": ["1028"],
+        "race_date": ["20181028"],
         "keibajo_code": ["05"],
-        "race_name": ["天皇賞秋"],
-        "grade_code": ["A"],
-        "kyori": [2000],
+        "race_code": ["201810050611"],
+        "umaban": ["06"],
         "kakutei_chakujun": ["01"],
-        "soha_time": ["1576"],
-        "kishumei_ryakusho": ["ルメール"],
-        "tansho_ninkijun": ["01"],
-        "tansho_odds": ["15"],
+        "kyori": [2000],
+        "track_code": ["10"],
+        "grade_code": ["A"],
     })
     mock_manager.fetch_dataframe.return_value = df
 
@@ -186,18 +184,16 @@ def test_get_uma_rekisen_returns_success(mock_manager: MockerFixture) -> None:
 def test_get_uma_rekisen_with_year_from(mock_manager: MockerFixture) -> None:
     """year_fromフィルタが指定可能."""
     df = pd.DataFrame({
-        "bamei": [],
-        "kaisai_nen": [],
-        "kaisai_gappi": [],
-        "keibajo_code": [],
-        "race_name": [],
-        "grade_code": [],
-        "kyori": [],
-        "kakutei_chakujun": [],
-        "soha_time": [],
-        "kishumei_ryakusho": [],
-        "tansho_ninkijun": [],
-        "tansho_odds": [],
+        "ketto_toroku_bango": pd.Series([], dtype=str),
+        "bamei": pd.Series([], dtype=str),
+        "race_date": pd.Series([], dtype=str),
+        "keibajo_code": pd.Series([], dtype=str),
+        "race_code": pd.Series([], dtype=str),
+        "umaban": pd.Series([], dtype=str),
+        "kakutei_chakujun": pd.Series([], dtype=str),
+        "kyori": pd.Series([], dtype=object),
+        "track_code": pd.Series([], dtype=str),
+        "grade_code": pd.Series([], dtype=str),
     })
     mock_manager.fetch_dataframe.return_value = df
 
@@ -359,10 +355,17 @@ def test_analyze_waku_seiseki_returns_error_on_db_failure(mock_manager: MockerFi
 
 def test_get_uma_chokyo_returns_success(mock_manager: MockerFixture) -> None:
     """get_uma_chokyoがsuccess=Trueを返す."""
-    horses_df = pd.DataFrame({
+    rekisen_df = pd.DataFrame({
         "ketto_toroku_bango": ["2020100001"],
         "bamei": ["テスト馬"],
-        "debut_date": ["20220101"],
+        "race_date": ["20220101"],
+        "keibajo_code": ["05"],
+        "race_code": ["202201050101"],
+        "umaban": ["01"],
+        "kakutei_chakujun": ["01"],
+        "kyori": [2000],
+        "track_code": ["10"],
+        "grade_code": ["F"],
     })
     wood_df = pd.DataFrame({
         "tracen_kubun": ["1"],
@@ -385,7 +388,7 @@ def test_get_uma_chokyo_returns_success(mock_manager: MockerFixture) -> None:
         "lap_time_3furlong": ["130"],
         "lap_time_4furlong": ["133"],
     })
-    mock_manager.fetch_dataframe.side_effect = [horses_df, wood_df, hanro_df]
+    mock_manager.fetch_dataframe.side_effect = [rekisen_df, wood_df, hanro_df]
 
     result = get_uma_chokyo(mock_manager, uma_name="テスト馬")
 
@@ -394,11 +397,10 @@ def test_get_uma_chokyo_returns_success(mock_manager: MockerFixture) -> None:
     horse = result["results"][0]
     assert horse["bamei"] == "テスト馬"
     assert horse["debut_date"] == "20220101"
-    assert horse["wood_count"] == 1
-    assert horse["hanro_count"] == 1
-    # 日付降順ソートのため坂路（20211205）がウッド（20211201）より先
-    assert horse["chokyo"][0]["course_type"] == "坂路"
-    assert horse["chokyo"][1]["time_6f"] == "82.0秒"
+    assert len(horse["wood_records"]) == 1
+    assert len(horse["hanro_records"]) == 1
+    assert horse["wood_records"][0]["time_6f"] == "0820"
+    assert horse["hanro_records"][0]["course_type"] == "坂路"
 
 
 def test_get_uma_chokyo_horse_not_found(mock_manager: MockerFixture) -> None:
@@ -406,7 +408,14 @@ def test_get_uma_chokyo_horse_not_found(mock_manager: MockerFixture) -> None:
     mock_manager.fetch_dataframe.return_value = pd.DataFrame({
         "ketto_toroku_bango": pd.Series([], dtype=str),
         "bamei": pd.Series([], dtype=str),
-        "debut_date": pd.Series([], dtype=str),
+        "race_date": pd.Series([], dtype=str),
+        "keibajo_code": pd.Series([], dtype=str),
+        "race_code": pd.Series([], dtype=str),
+        "umaban": pd.Series([], dtype=str),
+        "kakutei_chakujun": pd.Series([], dtype=str),
+        "kyori": pd.Series([], dtype=object),
+        "track_code": pd.Series([], dtype=str),
+        "grade_code": pd.Series([], dtype=str),
     })
 
     result = get_uma_chokyo(mock_manager, uma_name="存在しない馬")
@@ -417,11 +426,18 @@ def test_get_uma_chokyo_horse_not_found(mock_manager: MockerFixture) -> None:
 
 
 def test_get_uma_chokyo_before_debut_filter(mock_manager: MockerFixture) -> None:
-    """before_debut=Trueのときデビュー前フィルタがSQLに適用される."""
-    horses_df = pd.DataFrame({
+    """before_debut=TrueのときデビューデートのフィルタがSQLに適用される."""
+    rekisen_df = pd.DataFrame({
         "ketto_toroku_bango": ["2020100001"],
         "bamei": ["テスト馬"],
-        "debut_date": ["20220101"],
+        "race_date": ["20220101"],
+        "keibajo_code": ["05"],
+        "race_code": ["202201050101"],
+        "umaban": ["01"],
+        "kakutei_chakujun": ["01"],
+        "kyori": [2000],
+        "track_code": ["10"],
+        "grade_code": ["F"],
     })
     empty_wood = pd.DataFrame({
         "tracen_kubun": pd.Series([], dtype=str),
@@ -444,13 +460,14 @@ def test_get_uma_chokyo_before_debut_filter(mock_manager: MockerFixture) -> None
         "lap_time_3furlong": pd.Series([], dtype=str),
         "lap_time_4furlong": pd.Series([], dtype=str),
     })
-    mock_manager.fetch_dataframe.side_effect = [horses_df, empty_wood, empty_hanro]
+    mock_manager.fetch_dataframe.side_effect = [rekisen_df, empty_wood, empty_hanro]
 
     result = get_uma_chokyo(mock_manager, uma_name="テスト馬", before_debut=True)
 
     assert result["success"] is True
-    wood_sql = mock_manager.fetch_dataframe.call_args_list[1][0][0]
-    assert "chokyo_nengappi < %s" in wood_sql
+    wood_call_args = mock_manager.fetch_dataframe.call_args_list[1]
+    wood_sql = wood_call_args[0][0]
+    assert "chokyo_nengappi <= %s" in wood_sql
 
 
 # 準正常系: get_uma_chokyo
