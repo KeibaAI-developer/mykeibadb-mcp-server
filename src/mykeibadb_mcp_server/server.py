@@ -27,10 +27,12 @@ from mykeibadb.tables import TableAccessor
 
 from mykeibadb_mcp_server.guard import validate_select_only
 from mykeibadb_mcp_server.high_level_api import (
+    analyze_chokyo_debut_seiseki,
     analyze_kishu_seiseki,
     analyze_ninki_seiseki,
     analyze_sire_seiseki,
     analyze_waku_seiseki,
+    get_uma_chokyo,
     get_uma_rekisen,
 )
 from mykeibadb_mcp_server.schema.code_descriptions import (
@@ -566,6 +568,59 @@ def tool_analyze_waku_seiseki(
     """
     return analyze_waku_seiseki(
         _get_connection_manager(), keibajo, kyori, year_from, course_kubun, week_in_course
+    )
+
+
+@mcp.tool()
+def tool_get_uma_chokyo(
+    uma_name: str,
+    before_debut: bool = False,
+    year_from: str | None = None,
+    limit: int = 30,
+) -> dict[str, Any]:
+    """馬名（部分一致）でウッドチップ・坂路調教データを取得する。
+
+    Args:
+        uma_name (str): 馬名（部分一致で検索）
+        before_debut (bool): Trueの場合はデビュー前の調教のみ取得
+        year_from (str | None): 集計開始年（4桁文字列）
+        limit (int): コース別最大取得件数（デフォルト30）
+
+    Returns:
+        dict: 馬名・デビュー日・ウッドチップ/坂路調教レコード一覧を含む辞書
+    """
+    return get_uma_chokyo(_get_connection_manager(), uma_name, before_debut, year_from, limit)
+
+
+@mcp.tool()
+def tool_analyze_chokyo_debut_seiseki(
+    debut_date_from: str,
+    debut_date_to: str,
+    tracen_kubun: str | None = None,
+    wood_time_6f_max: int | None = None,
+    wood_laptime_1f_max: int | None = None,
+    hanro_time_4f_max: int | None = None,
+    hanro_laptime_1f_max: int | None = None,
+) -> dict[str, Any]:
+    """デビュー前の調教条件を満たした馬のデビュー後勝利率を集計する。
+
+    Args:
+        debut_date_from (str): デビュー期間開始日（yyyymmdd形式）
+        debut_date_to (str): デビュー期間終了日（yyyymmdd形式）
+        tracen_kubun (str | None): トレセン区分。'0'=美浦, '1'=栗東
+        wood_time_6f_max (int | None): ウッド6F合計タイム上限（0.1秒単位。例: 825=82.5秒）
+        wood_laptime_1f_max (int | None): ウッドラスト1Fタイム上限（0.1秒単位。例: 115=11.5秒）
+        hanro_time_4f_max (int | None): 坂路4F合計タイム上限（0.1秒単位）
+        hanro_laptime_1f_max (int | None): 坂路ラスト1Fタイム上限（0.1秒単位）
+
+    Returns:
+        dict: 条件を満たす馬の頭数・勝利馬数・勝利率を含む辞書
+    """
+    return analyze_chokyo_debut_seiseki(
+        _get_connection_manager(),
+        debut_date_from, debut_date_to, tracen_kubun,
+        wood_time_6f_max, wood_laptime_1f_max,
+        hanro_time_4f_max, hanro_laptime_1f_max,
     )
 
 
