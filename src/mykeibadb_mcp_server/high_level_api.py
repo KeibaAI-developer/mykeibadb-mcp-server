@@ -1,8 +1,12 @@
 """主要集計API。よく使われる競馬分析クエリをラップした関数群。"""
 
+from dataclasses import asdict
 from typing import Any
 
 import pandas as pd
+from mykeibadb.analytics import RaceCondition, analyze_chakudo, analyze_subject_chakudo
+from mykeibadb.analytics._cte_helpers import build_course_week_cte
+from mykeibadb.analytics._models import Subject
 from mykeibadb.connection import ConnectionManager
 from mykeibadb.exceptions import MykeibaDBError
 
@@ -32,66 +36,28 @@ def analyze_ninki_seiseki(
     Returns:
         dict: 出走数・勝利数・勝率・複勝数・複勝率を含む辞書
     """
-    try:
-        ninki_str = str(ninki).zfill(2)
-        cte_params: list[Any] = []
-        cte_sql, join_sql = "", ""
-        if course_kubun is not None and week_in_course is not None:
-            cte_sql, join_sql = _build_course_week_cte(
-                keibajo, course_kubun, week_in_course, cte_params
-            )
-
-        where_clauses = [
-            "u.tansho_ninkijun = %s",
-            "u.kakutei_chakujun != '00'",
-        ]
-        where_params: list[Any] = [ninki_str]
-
-        if keibajo:
-            where_clauses.append("r.keibajo_code = %s")
-            where_params.append(keibajo)
-        if grade:
-            where_clauses.append("r.grade_code = %s")
-            where_params.append(grade)
-        if year_from:
-            where_clauses.append("r.kaisai_nen >= %s")
-            where_params.append(year_from)
-        if kyori:
-            where_clauses.append("r.kyori = %s")
-            where_params.append(str(kyori))
-
-        where = " AND ".join(where_clauses)
-        with_clause = f"WITH {cte_sql}" if cte_sql else ""
-        sql = f"""
-            {with_clause}
-            SELECT
-                COUNT(*) AS total,
-                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
-                    THEN 1 ELSE 0 END), 0) AS wins,
-                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3
-                    THEN 1 ELSE 0 END), 0) AS fukusho
-            FROM umagoto_race_joho u
-            JOIN race_shosai r ON u.race_code = r.race_code
-            {join_sql}
-            WHERE {where}
-        """
-        params = tuple(cte_params + where_params)
-        df = manager.fetch_dataframe(sql, params=params)
-        row = df.iloc[0]
-        total = int(row["total"])
-        wins = int(row["wins"])
-        fukusho = int(row["fukusho"])
-        return {
-            "success": True,
-            "ninki": ninki,
-            "total": total,
-            "wins": wins,
-            "win_rate": round(wins / total * 100, 1) if total > 0 else 0.0,
-            "fukusho": fukusho,
-            "fukusho_rate": round(fukusho / total * 100, 1) if total > 0 else 0.0,
-        }
-    except MykeibaDBError as e:
-        return {"success": False, "error": str(e)}
+    condition = RaceCondition(
+        keibajo_code=keibajo,
+        grade_code=grade,
+        year_from=year_from,
+        kyori=kyori,
+        course_kubun=course_kubun,
+        week_in_course=week_in_course,
+    )
+    result = analyze_chakudo(
+        manager,
+        group_expr="CAST(TRIM(u.tansho_ninkijun) AS INTEGER)",
+        sort_expr="CAST(TRIM(u.tansho_ninkijun) AS INTEGER)",
+        condition=condition,
+    )
+    if not result.success:
+        return {"success": False, "error": result.error}
+    ninki_rows = [r for r in result.rows if r.group == str(ninki)]
+    return {
+        "success": True,
+        "count": len(ninki_rows),
+        "results": [asdict(row) for row in ninki_rows],
+    }
 
 
 def analyze_kishu_seiseki(
@@ -117,67 +83,21 @@ def analyze_kishu_seiseki(
     Returns:
         dict: 騎手名・騎乗数・勝利数・勝率・複勝率を含む辞書
     """
-    try:
-        cte_params: list[Any] = []
-        cte_sql, join_sql = "", ""
-        if course_kubun is not None and week_in_course is not None:
-            cte_sql, join_sql = _build_course_week_cte(
-                keibajo, course_kubun, week_in_course, cte_params
-            )
-
-        where_clauses = [
-            "km.kishumei LIKE %s",
-            "u.kakutei_chakujun != '00'",
-        ]
-        where_params: list[Any] = [f"%{kishu_name}%"]
-
-        if keibajo:
-            where_clauses.append("r.keibajo_code = %s")
-            where_params.append(keibajo)
-        if year_from:
-            where_clauses.append("r.kaisai_nen >= %s")
-            where_params.append(year_from)
-        if kyori:
-            where_clauses.append("r.kyori = %s")
-            where_params.append(str(kyori))
-
-        where = " AND ".join(where_clauses)
-        with_clause = f"WITH {cte_sql}" if cte_sql else ""
-        sql = f"""
-            {with_clause}
-            SELECT
-                km.kishumei,
-                COUNT(*) AS total,
-                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
-                    THEN 1 ELSE 0 END), 0) AS wins,
-                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3
-                    THEN 1 ELSE 0 END), 0) AS fukusho
-            FROM umagoto_race_joho u
-            JOIN race_shosai r ON u.race_code = r.race_code
-            JOIN kishu_master km ON u.kishu_code = km.kishu_code
-            {join_sql}
-            WHERE {where}
-            GROUP BY km.kishumei
-            ORDER BY wins DESC
-        """
-        params = tuple(cte_params + where_params)
-        df = manager.fetch_dataframe(sql, params=params)
-        results = []
-        for _, row in df.iterrows():
-            total = int(row["total"])
-            wins = int(row["wins"])
-            fukusho = int(row["fukusho"])
-            results.append({
-                "kishumei": row["kishumei"],
-                "total": total,
-                "wins": wins,
-                "win_rate": round(wins / total * 100, 1) if total > 0 else 0.0,
-                "fukusho": fukusho,
-                "fukusho_rate": round(fukusho / total * 100, 1) if total > 0 else 0.0,
-            })
-        return {"success": True, "results": results, "count": len(results)}
-    except MykeibaDBError as e:
-        return {"success": False, "error": str(e)}
+    condition = RaceCondition(
+        keibajo_code=keibajo,
+        year_from=year_from,
+        kyori=kyori,
+        course_kubun=course_kubun,
+        week_in_course=week_in_course,
+    )
+    result = analyze_subject_chakudo(manager, Subject.KISHU, name=kishu_name, condition=condition)
+    if not result.success:
+        return {"success": False, "error": result.error}
+    return {
+        "success": True,
+        "count": len(result.rows),
+        "results": [asdict(row) for row in result.rows],
+    }
 
 
 def analyze_sire_seiseki(
@@ -203,67 +123,21 @@ def analyze_sire_seiseki(
     Returns:
         dict: 種牡馬名・産駒出走数・勝利数・勝率・複勝率を含む辞書
     """
-    try:
-        cte_params: list[Any] = []
-        cte_sql, join_sql = "", ""
-        if course_kubun is not None and week_in_course is not None:
-            cte_sql, join_sql = _build_course_week_cte(
-                keibajo, course_kubun, week_in_course, cte_params
-            )
-
-        where_clauses = [
-            "km2.ketto1_bamei LIKE %s",
-            "u.kakutei_chakujun != '00'",
-        ]
-        where_params: list[Any] = [f"%{sire_name}%"]
-
-        if keibajo:
-            where_clauses.append("r.keibajo_code = %s")
-            where_params.append(keibajo)
-        if kyori:
-            where_clauses.append("r.kyori = %s")
-            where_params.append(str(kyori))
-        if year_from:
-            where_clauses.append("r.kaisai_nen >= %s")
-            where_params.append(year_from)
-
-        where = " AND ".join(where_clauses)
-        with_clause = f"WITH {cte_sql}" if cte_sql else ""
-        sql = f"""
-            {with_clause}
-            SELECT
-                km2.ketto1_bamei AS sire_name,
-                COUNT(*) AS total,
-                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
-                    THEN 1 ELSE 0 END), 0) AS wins,
-                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3
-                    THEN 1 ELSE 0 END), 0) AS fukusho
-            FROM umagoto_race_joho u
-            JOIN race_shosai r ON u.race_code = r.race_code
-            JOIN kyosoba_master2 km2 ON u.ketto_toroku_bango = km2.ketto_toroku_bango
-            {join_sql}
-            WHERE {where}
-            GROUP BY km2.ketto1_bamei
-            ORDER BY wins DESC
-        """
-        params = tuple(cte_params + where_params)
-        df = manager.fetch_dataframe(sql, params=params)
-        results = []
-        for _, row in df.iterrows():
-            total = int(row["total"])
-            wins = int(row["wins"])
-            fukusho = int(row["fukusho"])
-            results.append({
-                "sire_name": row["sire_name"],
-                "total": total,
-                "wins": wins,
-                "win_rate": round(wins / total * 100, 1) if total > 0 else 0.0,
-                "fukusho": fukusho,
-                "fukusho_rate": round(fukusho / total * 100, 1) if total > 0 else 0.0,
-            })
-        return {"success": True, "results": results, "count": len(results)}
-    except MykeibaDBError as e:
-        return {"success": False, "error": str(e)}
+    condition = RaceCondition(
+        keibajo_code=keibajo,
+        kyori=kyori,
+        year_from=year_from,
+        course_kubun=course_kubun,
+        week_in_course=week_in_course,
+    )
+    result = analyze_subject_chakudo(manager, Subject.SIRE, name=sire_name, condition=condition)
+    if not result.success:
+        return {"success": False, "error": result.error}
+    return {
+        "success": True,
+        "count": len(result.rows),
+        "results": [asdict(row) for row in result.rows],
+    }
 
 
 def get_uma_rekisen(
@@ -289,7 +163,7 @@ def get_uma_rekisen(
         cte_params: list[Any] = []
         cte_sql, join_sql = "", ""
         if course_kubun is not None and week_in_course is not None:
-            cte_sql, join_sql = _build_course_week_cte(
+            cte_sql, join_sql = build_course_week_cte(
                 None, course_kubun, week_in_course, cte_params
             )
 
@@ -301,7 +175,7 @@ def get_uma_rekisen(
             where_params.append(year_from)
 
         where = " AND ".join(where_clauses)
-        with_clause = f"WITH {cte_sql}" if cte_sql else ""
+        with_clause = f"WITH RECURSIVE {cte_sql}" if cte_sql else ""
         sql = f"""
             {with_clause}
             SELECT
@@ -368,63 +242,26 @@ def analyze_waku_seiseki(
     Returns:
         dict: 枠番ごとの出走数・勝利数・勝率・複勝率を含む辞書
     """
-    try:
-        cte_params: list[Any] = []
-        cte_sql, join_sql = "", ""
-        if course_kubun is not None and week_in_course is not None:
-            cte_sql, join_sql = _build_course_week_cte(
-                keibajo, course_kubun, week_in_course, cte_params
-            )
-
-        where_clauses = ["u.kakutei_chakujun != '00'"]
-        where_params: list[Any] = []
-
-        if keibajo:
-            where_clauses.append("r.keibajo_code = %s")
-            where_params.append(keibajo)
-        if kyori:
-            where_clauses.append("r.kyori = %s")
-            where_params.append(str(kyori))
-        if year_from:
-            where_clauses.append("r.kaisai_nen >= %s")
-            where_params.append(year_from)
-
-        where = " AND ".join(where_clauses)
-        with_clause = f"WITH {cte_sql}" if cte_sql else ""
-        sql = f"""
-            {with_clause}
-            SELECT
-                u.wakuban,
-                COUNT(*) AS total,
-                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) = 1
-                    THEN 1 ELSE 0 END), 0) AS wins,
-                COALESCE(SUM(CASE WHEN CAST(u.kakutei_chakujun AS INTEGER) <= 3
-                    THEN 1 ELSE 0 END), 0) AS fukusho
-            FROM umagoto_race_joho u
-            JOIN race_shosai r ON u.race_code = r.race_code
-            {join_sql}
-            WHERE {where}
-            GROUP BY u.wakuban
-            ORDER BY u.wakuban
-        """
-        params = tuple(cte_params + where_params)
-        df = manager.fetch_dataframe(sql, params=params if params else None)
-        results = []
-        for _, row in df.iterrows():
-            total = int(row["total"])
-            wins = int(row["wins"])
-            fukusho = int(row["fukusho"])
-            results.append({
-                "wakuban": row["wakuban"],
-                "total": total,
-                "wins": wins,
-                "win_rate": round(wins / total * 100, 1) if total > 0 else 0.0,
-                "fukusho": fukusho,
-                "fukusho_rate": round(fukusho / total * 100, 1) if total > 0 else 0.0,
-            })
-        return {"success": True, "results": results, "count": len(results)}
-    except MykeibaDBError as e:
-        return {"success": False, "error": str(e)}
+    condition = RaceCondition(
+        keibajo_code=keibajo,
+        kyori=kyori,
+        year_from=year_from,
+        course_kubun=course_kubun,
+        week_in_course=week_in_course,
+    )
+    result = analyze_chakudo(
+        manager,
+        group_expr="TRIM(u.wakuban)",
+        sort_expr="TRIM(u.wakuban)",
+        condition=condition,
+    )
+    if not result.success:
+        return {"success": False, "error": result.error}
+    return {
+        "success": True,
+        "count": len(result.rows),
+        "results": [asdict(row) for row in result.rows],
+    }
 
 
 def get_uma_chokyo(
@@ -703,7 +540,6 @@ def analyze_race_chakudo(
     manager: ConnectionManager,
     group_expr: str,
     sort_expr: str,
-    race_name: str | None = None,
     keibajo: str | None = None,
     kyori: int | None = None,
     year_from: str | None = None,
@@ -718,7 +554,6 @@ def analyze_race_chakudo(
         manager (ConnectionManager): DBコネクションマネージャ
         group_expr (str): グループ化SQL式（SELECT句に埋め込む）
         sort_expr (str): ソートSQL式（ORDER BY句に埋め込む）
-        race_name (str | None): レース名（部分一致）
         keibajo (str | None): 競馬場コード
         kyori (int | None): 距離（メートル）
         year_from (str | None): 集計開始年（4桁文字列）
@@ -730,215 +565,23 @@ def analyze_race_chakudo(
     Returns:
         dict: 集計結果を含む辞書
     """
-    try:
-        params: list[Any] = []
-        cte_parts: list[str] = []
-        join_sql = ""
-
-        if course_kubun is not None and week_in_course is not None:
-            cte_sql, join_sql = _build_course_week_cte(
-                keibajo, course_kubun, week_in_course, params
-            )
-            cte_parts.append(cte_sql)
-            using_cw = True
-        else:
-            using_cw = False
-
-        cte_parts.append(
-            """fukusho_payouts AS (
-            SELECT race_code, fukusho1_umaban AS umaban,
-                   CAST(TRIM(fukusho1_haraimodoshikin) AS INTEGER) AS payout
-            FROM haraimodoshi
-            WHERE TRIM(fukusho1_haraimodoshikin) ~ '^[0-9]+$'
-              AND TRIM(fukusho1_haraimodoshikin)::INTEGER > 0
-            UNION ALL
-            SELECT race_code, fukusho2_umaban,
-                   CAST(TRIM(fukusho2_haraimodoshikin) AS INTEGER)
-            FROM haraimodoshi WHERE TRIM(fukusho2_haraimodoshikin) ~ '^[0-9]+$'
-              AND TRIM(fukusho2_haraimodoshikin)::INTEGER > 0
-            UNION ALL
-            SELECT race_code, fukusho3_umaban,
-                   CAST(TRIM(fukusho3_haraimodoshikin) AS INTEGER)
-            FROM haraimodoshi WHERE TRIM(fukusho3_haraimodoshikin) ~ '^[0-9]+$'
-              AND TRIM(fukusho3_haraimodoshikin)::INTEGER > 0
-        )"""
-        )
-        cte_parts.append(
-            """tansho_payouts AS (
-            SELECT race_code, tansho1_umaban AS umaban,
-                   CAST(TRIM(tansho1_haraimodoshikin) AS INTEGER) AS payout
-            FROM haraimodoshi WHERE TRIM(tansho1_haraimodoshikin) ~ '^[0-9]+$'
-              AND TRIM(tansho1_haraimodoshikin)::INTEGER > 0
-        )"""
-        )
-
-        where_parts: list[str] = [
-            "u.kakutei_chakujun ~ '^[0-9]{2}$'",
-            "u.kakutei_chakujun != '00'",
-        ]
-        if race_name:
-            where_parts.append("r.race_name LIKE %s")
-            params.append(f"%{race_name}%")
-        if keibajo and not using_cw:
-            where_parts.append("r.keibajo_code = %s")
-            params.append(keibajo)
-        if kyori:
-            where_parts.append("r.kyori = %s")
-            params.append(kyori)
-        if year_from:
-            where_parts.append("r.kaisai_nen >= %s")
-            params.append(year_from)
-        if year_to:
-            where_parts.append("r.kaisai_nen <= %s")
-            params.append(year_to)
-        if grade:
-            where_parts.append("r.grade_code = %s")
-            params.append(grade)
-
-        where_clause = "\n              AND ".join(where_parts)
-        cte_parts.append(
-            f"""base AS (
-            SELECT
-                {group_expr} AS grp,
-                {sort_expr} AS sort_key,
-                u.kakutei_chakujun,
-                u.umaban,
-                u.race_code
-            FROM umagoto_race_joho u
-            JOIN race_joho r ON u.race_code = r.race_code
-            {join_sql}
-            WHERE {where_clause}
-        )"""
-        )
-
-        sql = f"""
-            WITH {", ".join(cte_parts)}
-            SELECT
-                grp,
-                sort_key,
-                COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE kakutei_chakujun = '01') AS wins,
-                COUNT(*) FILTER (WHERE kakutei_chakujun = '02') AS second,
-                COUNT(*) FILTER (WHERE kakutei_chakujun = '03') AS third,
-                COUNT(*) FILTER (
-                    WHERE kakutei_chakujun NOT IN ('01', '02', '03')
-                ) AS chakugai,
-                ROUND(
-                    COUNT(*) FILTER (WHERE kakutei_chakujun = '01')
-                    * 100.0 / NULLIF(COUNT(*), 0), 1
-                ) AS win_rate,
-                ROUND(
-                    COUNT(*) FILTER (WHERE kakutei_chakujun IN ('01', '02', '03'))
-                    * 100.0 / NULLIF(COUNT(*), 0), 1
-                ) AS fukusho_rate,
-                ROUND(
-                    COALESCE(SUM(tp.payout), 0) * 1.0 / NULLIF(COUNT(*), 0), 1
-                ) AS tansho_kaishuu,
-                ROUND(
-                    COALESCE(SUM(fp.payout), 0) * 1.0 / NULLIF(COUNT(*), 0), 1
-                ) AS fukusho_kaishuu
-            FROM base
-            LEFT JOIN tansho_payouts tp
-                ON base.race_code = tp.race_code AND base.umaban = tp.umaban
-            LEFT JOIN fukusho_payouts fp
-                ON base.race_code = fp.race_code AND base.umaban = fp.umaban
-            GROUP BY grp, sort_key
-            ORDER BY sort_key
-        """
-
-        df = manager.fetch_dataframe(sql, params=tuple(params))
-        results = []
-        for _, row in df.iterrows():
-            results.append({
-                "group": str(row["grp"]),
-                "total": int(row["total"]),
-                "wins": int(row["wins"]),
-                "second": int(row["second"]),
-                "third": int(row["third"]),
-                "chakugai": int(row["chakugai"]),
-                "win_rate": float(row["win_rate"]) if pd.notna(row["win_rate"]) else 0.0,
-                "fukusho_rate": (
-                    float(row["fukusho_rate"]) if pd.notna(row["fukusho_rate"]) else 0.0
-                ),
-                "tansho_kaishuu": (
-                    float(row["tansho_kaishuu"]) if pd.notna(row["tansho_kaishuu"]) else 0.0
-                ),
-                "fukusho_kaishuu": (
-                    float(row["fukusho_kaishuu"]) if pd.notna(row["fukusho_kaishuu"]) else 0.0
-                ),
-            })
-        return {"success": True, "count": len(results), "results": results}
-    except MykeibaDBError as e:
-        return {"success": False, "error": str(e)}
-
-
-def _build_course_week_cte(
-    keibajo: str | None,
-    course_kubun: str,
-    week_in_course: int,
-    cte_params: list[Any],
-) -> tuple[str, str]:
-    """コースn週目フィルタ用のCTE SQLとJOIN句を生成する。
-
-    同一コース区分の使用開始から2日間を1週として週番号を計算し、
-    指定コース・週番号の開催日のみに絞り込むCTEを生成する。
-
-    Args:
-        keibajo (str | None): 競馬場コード。Noneの場合は全競馬場が対象。
-        course_kubun (str): コース区分（例: 'C'）。
-        week_in_course (int): コース使用開始からの週番号（1始まり）。
-        cte_params (list[Any]): SQLパラメータリスト（末尾に追加される）。
-
-    Returns:
-        tuple[str, str]: (CTE SQL（WITHキーワードなし）, JOIN句)
-    """
-    keibajo_filter = "AND keibajo_code = %s" if keibajo else ""
-    if keibajo:
-        cte_params.append(keibajo)
-    cte_params.extend([course_kubun, week_in_course])
-
-    cte_sql = f"""
-        cw_daily AS (
-            SELECT DISTINCT keibajo_code, kaisai_nen, kaisai_kai, kaisai_nichime, course_kubun
-            FROM race_shosai
-            WHERE course_kubun != '' {keibajo_filter}
-        ),
-        cw_with_prev AS (
-            SELECT *,
-                LAG(course_kubun) OVER (
-                    PARTITION BY keibajo_code, kaisai_nen ORDER BY kaisai_kai, kaisai_nichime
-                ) AS prev_course
-            FROM cw_daily
-        ),
-        cw_with_group AS (
-            SELECT *,
-                SUM(CASE WHEN course_kubun != COALESCE(prev_course, '_') THEN 1 ELSE 0 END)
-                    OVER (PARTITION BY keibajo_code, kaisai_nen ORDER BY kaisai_kai, kaisai_nichime)
-                    AS cw_group_id
-            FROM cw_with_prev
-        ),
-        cw_weeks AS (
-            SELECT *,
-                CEIL(
-                    ROW_NUMBER() OVER (
-                        PARTITION BY keibajo_code, kaisai_nen, cw_group_id
-                        ORDER BY kaisai_kai, kaisai_nichime
-                    ) / 2.0
-                )::INT AS week_in_course
-            FROM cw_with_group
-        ),
-        cw_target AS (
-            SELECT keibajo_code, kaisai_nen, kaisai_kai, kaisai_nichime
-            FROM cw_weeks
-            WHERE course_kubun = %s AND week_in_course = %s
-        )"""
-
-    join_sql = """JOIN cw_target ON r.keibajo_code = cw_target.keibajo_code
-            AND r.kaisai_nen = cw_target.kaisai_nen
-            AND r.kaisai_kai = cw_target.kaisai_kai
-            AND r.kaisai_nichime = cw_target.kaisai_nichime"""
-
-    return cte_sql, join_sql
+    condition = RaceCondition(
+        keibajo_code=keibajo,
+        kyori=kyori,
+        year_from=year_from,
+        year_to=year_to,
+        grade_code=grade,
+        course_kubun=course_kubun,
+        week_in_course=week_in_course,
+    )
+    result = analyze_chakudo(manager, group_expr, sort_expr, condition)
+    if not result.success:
+        return {"success": False, "error": result.error}
+    return {
+        "success": True,
+        "count": len(result.rows),
+        "results": [asdict(row) for row in result.rows],
+    }
 
 
 def _fmt_time4(val: str) -> str | None:

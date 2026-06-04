@@ -39,7 +39,7 @@ jobs:
             printf 'machine github.com\nlogin x-access-token\npassword %s\n' "$GH_PAT" > "$HOME/.netrc"
             chmod 600 "$HOME/.netrc"
           fi
-          python -m pip install "git+https://github.com/KeibaAI-developer/mykeibadb-python.git@main"
+          python -m pip install "git+https://github.com/KeibaAI-developer/mykeibadb-python.git@develop"
           rm -f "$HOME/.netrc"
 
       - name: Install dependencies
@@ -102,7 +102,7 @@ jobs:
             printf 'machine github.com\nlogin x-access-token\npassword %s\n' "$GH_PAT" > "$HOME/.netrc"
             chmod 600 "$HOME/.netrc"
           fi
-          python -m pip install "git+https://github.com/KeibaAI-developer/mykeibadb-python.git@main"
+          python -m pip install "git+https://github.com/KeibaAI-developer/mykeibadb-python.git@develop"
           rm -f "$HOME/.netrc"
 
       - name: Install dependencies

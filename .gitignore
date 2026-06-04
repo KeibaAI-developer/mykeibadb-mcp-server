@@ -6,3 +6,7 @@ coverage.xml
 *.egg-info/
 dist/
 .env
+
+DEV_HISTORY/
+PR/
+REVIEW/
