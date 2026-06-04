@@ -22,47 +22,88 @@ def mock_manager(mocker: MockerFixture):  # type: ignore[no-untyped-def]
     return mocker.MagicMock()
 
 
+def _make_chakudo_df(
+    grp: object = "1",
+    total: int = 100,
+    wins: int = 20,
+    second: int = 15,
+    third: int = 12,
+    chakugai: int = 53,
+    win_rate: float = 20.0,
+    fukusho_rate: float = 47.0,
+    tansho_kaishuu: float = 85.0,
+    fukusho_kaishuu: float = 78.0,
+) -> pd.DataFrame:
+    """ChakudoRow.from_series互換のDataFrameを生成する."""
+    return pd.DataFrame({
+        "grp": [grp],
+        "total": [total],
+        "wins": [wins],
+        "second": [second],
+        "third": [third],
+        "chakugai": [chakugai],
+        "win_rate": [win_rate],
+        "fukusho_rate": [fukusho_rate],
+        "tansho_kaishuu": [tansho_kaishuu],
+        "fukusho_kaishuu": [fukusho_kaishuu],
+    })
+
+
+def _make_chakudo_multi_df() -> pd.DataFrame:
+    """複数行のChakudoRow互換DataFrameを生成する."""
+    return pd.DataFrame({
+        "grp": ["1人気", "2人気", "3人気"],
+        "total": [100, 100, 100],
+        "wins": [30, 20, 15],
+        "second": [20, 25, 20],
+        "third": [15, 18, 22],
+        "chakugai": [35, 37, 43],
+        "win_rate": [30.0, 20.0, 15.0],
+        "fukusho_rate": [65.0, 63.0, 57.0],
+        "tansho_kaishuu": [85.0, 90.0, 95.0],
+        "fukusho_kaishuu": [78.0, 82.0, 80.0],
+    })
+
+
 # 正常系: analyze_ninki_seiseki
 
 
 def test_analyze_ninki_seiseki_returns_success(mock_manager: MockerFixture) -> None:
     """analyze_ninki_seisekiがsuccess=Trueを返す."""
-    df = pd.DataFrame({"total": [100], "wins": [20], "fukusho": [45]})
-    mock_manager.fetch_dataframe.return_value = df
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df(grp=1, total=100, wins=20)
 
     result = analyze_ninki_seiseki(mock_manager, ninki=1)
 
     assert result["success"] is True
-    assert result["total"] == 100
-    assert result["wins"] == 20
-    assert result["win_rate"] == 20.0
-    assert result["fukusho"] == 45
-    assert result["fukusho_rate"] == 45.0
-    assert result["ninki"] == 1
+    assert result["count"] == 1
+    row = result["results"][0]
+    assert row["total"] == 100
+    assert row["wins"] == 20
+    assert row["win_rate"] == 20.0
 
 
 def test_analyze_ninki_seiseki_with_filters(mock_manager: MockerFixture) -> None:
     """フィルタパラメータが指定可能."""
-    df = pd.DataFrame({"total": [50], "wins": [10], "fukusho": [20]})
-    mock_manager.fetch_dataframe.return_value = df
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df(grp=2, total=50)
 
     result = analyze_ninki_seiseki(
         mock_manager, ninki=2, keibajo="05", grade="A", year_from="2020", kyori=2000
     )
 
     assert result["success"] is True
-    assert result["total"] == 50
+    assert result["count"] == 1
+    assert result["results"][0]["total"] == 50
 
 
-def test_analyze_ninki_seiseki_zero_total_returns_zero_rate(mock_manager: MockerFixture) -> None:
-    """出走数0のときに勝率0.0が返る."""
-    df = pd.DataFrame({"total": [0], "wins": [0], "fukusho": [0]})
-    mock_manager.fetch_dataframe.return_value = df
+def test_analyze_ninki_seiseki_no_matching_rows(mock_manager: MockerFixture) -> None:
+    """指定人気に該当する行がないときcount=0が返る."""
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df(grp=2)
 
-    result = analyze_ninki_seiseki(mock_manager)
+    result = analyze_ninki_seiseki(mock_manager, ninki=1)
 
-    assert result["win_rate"] == 0.0
-    assert result["fukusho_rate"] == 0.0
+    assert result["success"] is True
+    assert result["count"] == 0
+    assert result["results"] == []
 
 
 # 正常系: analyze_kishu_seiseki
@@ -70,27 +111,25 @@ def test_analyze_ninki_seiseki_zero_total_returns_zero_rate(mock_manager: Mocker
 
 def test_analyze_kishu_seiseki_returns_success(mock_manager: MockerFixture) -> None:
     """analyze_kishu_seisekiがsuccess=Trueを返す."""
-    df = pd.DataFrame({
-        "kishumei": ["武豊"],
-        "total": [500],
-        "wins": [100],
-        "fukusho": [200],
-    })
-    mock_manager.fetch_dataframe.return_value = df
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df(
+        grp="武豊", total=500, wins=100, win_rate=20.0
+    )
 
     result = analyze_kishu_seiseki(mock_manager, kishu_name="武豊")
 
     assert result["success"] is True
     assert result["count"] == 1
     row = result["results"][0]
-    assert row["kishumei"] == "武豊"
+    assert row["group"] == "武豊"
     assert row["win_rate"] == 20.0
 
 
 def test_analyze_kishu_seiseki_empty_result(mock_manager: MockerFixture) -> None:
     """マッチなし時にcountが0."""
-    df = pd.DataFrame({"kishu_mei": [], "total": [], "wins": [], "fukusho": []})
-    mock_manager.fetch_dataframe.return_value = df
+    mock_manager.fetch_dataframe.return_value = pd.DataFrame(columns=[
+        "grp", "total", "wins", "second", "third",
+        "chakugai", "win_rate", "fukusho_rate", "tansho_kaishuu", "fukusho_kaishuu",
+    ])
 
     result = analyze_kishu_seiseki(mock_manager, kishu_name="存在しない騎手")
 
@@ -103,20 +142,16 @@ def test_analyze_kishu_seiseki_empty_result(mock_manager: MockerFixture) -> None
 
 def test_analyze_sire_seiseki_returns_success(mock_manager: MockerFixture) -> None:
     """analyze_sire_seisekiがsuccess=Trueを返す."""
-    df = pd.DataFrame({
-        "sire_name": ["ディープインパクト"],
-        "total": [1000],
-        "wins": [200],
-        "fukusho": [400],
-    })
-    mock_manager.fetch_dataframe.return_value = df
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df(
+        grp="ディープインパクト", total=1000, wins=200, win_rate=20.0
+    )
 
     result = analyze_sire_seiseki(mock_manager, sire_name="ディープインパクト")
 
     assert result["success"] is True
     assert result["count"] == 1
     row = result["results"][0]
-    assert row["sire_name"] == "ディープインパクト"
+    assert row["group"] == "ディープインパクト"
     assert row["win_rate"] == 20.0
 
 
@@ -177,13 +212,18 @@ def test_get_uma_rekisen_with_year_from(mock_manager: MockerFixture) -> None:
 
 def test_analyze_waku_seiseki_returns_success(mock_manager: MockerFixture) -> None:
     """analyze_waku_seisekiがsuccess=Trueを返す."""
-    df = pd.DataFrame({
-        "wakuban": ["1", "2", "3"],
+    mock_manager.fetch_dataframe.return_value = pd.DataFrame({
+        "grp": ["1", "2", "3"],
         "total": [100, 120, 110],
         "wins": [10, 15, 12],
-        "fukusho": [25, 30, 28],
+        "second": [12, 18, 14],
+        "third": [15, 20, 16],
+        "chakugai": [63, 67, 68],
+        "win_rate": [10.0, 12.5, 10.9],
+        "fukusho_rate": [37.0, 44.2, 38.2],
+        "tansho_kaishuu": [80.0, 90.0, 85.0],
+        "fukusho_kaishuu": [75.0, 85.0, 78.0],
     })
-    mock_manager.fetch_dataframe.return_value = df
 
     result = analyze_waku_seiseki(mock_manager)
 
@@ -193,13 +233,9 @@ def test_analyze_waku_seiseki_returns_success(mock_manager: MockerFixture) -> No
 
 def test_analyze_waku_seiseki_with_filters(mock_manager: MockerFixture) -> None:
     """フィルタパラメータが指定可能."""
-    df = pd.DataFrame({
-        "wakuban": ["1"],
-        "total": [50],
-        "wins": [8],
-        "fukusho": [18],
-    })
-    mock_manager.fetch_dataframe.return_value = df
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df(
+        grp="1", total=50, wins=8, win_rate=16.0
+    )
 
     result = analyze_waku_seiseki(mock_manager, keibajo="05", kyori=2000, year_from="2020")
 
@@ -212,13 +248,9 @@ def test_analyze_waku_seiseki_with_filters(mock_manager: MockerFixture) -> None:
 
 def test_analyze_waku_seiseki_with_course_week_filter(mock_manager: MockerFixture) -> None:
     """course_kubunとweek_in_courseを指定するとCTEフィルタが適用される."""
-    df = pd.DataFrame({
-        "wakuban": ["1"],
-        "total": [30],
-        "wins": [6],
-        "fukusho": [12],
-    })
-    mock_manager.fetch_dataframe.return_value = df
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df(
+        grp="1", total=30, wins=6, win_rate=20.0
+    )
 
     result = analyze_waku_seiseki(
         mock_manager, keibajo="05", kyori=1600, year_from="2021",
@@ -239,16 +271,17 @@ def test_analyze_waku_seiseki_with_course_week_filter(mock_manager: MockerFixtur
 
 def test_analyze_ninki_seiseki_with_course_week_filter(mock_manager: MockerFixture) -> None:
     """course_kubunとweek_in_courseを指定するとCTEフィルタが適用される."""
-    df = pd.DataFrame({"total": [80], "wins": [16], "fukusho": [32]})
-    mock_manager.fetch_dataframe.return_value = df
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_df(
+        grp=1, total=80, wins=16, win_rate=20.0
+    )
 
     result = analyze_ninki_seiseki(
         mock_manager, ninki=1, keibajo="05", course_kubun="C", week_in_course=2
     )
 
     assert result["success"] is True
-    assert result["total"] == 80
-    assert result["win_rate"] == 20.0
+    assert result["count"] == 1
+    assert result["results"][0]["win_rate"] == 20.0
 
     call_args = mock_manager.fetch_dataframe.call_args
     sql = call_args[0][0]
@@ -535,25 +568,9 @@ def test_analyze_chokyo_debut_seiseki_returns_error_on_db_failure(
 # 正常系: analyze_race_chakudo
 
 
-def _make_chakudo_df() -> pd.DataFrame:
-    return pd.DataFrame({
-        "grp": ["1人気", "2人気", "3人気"],
-        "sort_key": [1, 2, 3],
-        "total": [100, 100, 100],
-        "wins": [30, 20, 15],
-        "second": [20, 25, 20],
-        "third": [15, 18, 22],
-        "chakugai": [35, 37, 43],
-        "win_rate": [30.0, 20.0, 15.0],
-        "fukusho_rate": [65.0, 63.0, 57.0],
-        "tansho_kaishuu": [85.0, 90.0, 95.0],
-        "fukusho_kaishuu": [78.0, 82.0, 80.0],
-    })
-
-
 def test_analyze_race_chakudo_returns_success(mock_manager: MockerFixture) -> None:
     """基本的な集計でsuccess=Trueを返す."""
-    mock_manager.fetch_dataframe.return_value = _make_chakudo_df()
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_multi_df()
 
     result = analyze_race_chakudo(
         mock_manager,
@@ -574,23 +591,20 @@ def test_analyze_race_chakudo_returns_success(mock_manager: MockerFixture) -> No
 
 def test_analyze_race_chakudo_with_filters(mock_manager: MockerFixture) -> None:
     """フィルタ条件がSQLのWHERE句に反映される."""
-    mock_manager.fetch_dataframe.return_value = _make_chakudo_df()
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_multi_df()
 
     analyze_race_chakudo(
         mock_manager,
         group_expr="u.tansho_ninkijun",
         sort_expr="CAST(u.tansho_ninkijun AS INTEGER)",
-        race_name="東京優駿",
         year_from="2016",
         year_to="2025",
     )
 
     sql, kwargs = mock_manager.fetch_dataframe.call_args
-    assert "race_name LIKE %s" in sql[0]
     assert "kaisai_nen >= %s" in sql[0]
     assert "kaisai_nen <= %s" in sql[0]
     params = kwargs["params"]
-    assert "%東京優駿%" in params
     assert "2016" in params
     assert "2025" in params
 
@@ -598,7 +612,7 @@ def test_analyze_race_chakudo_with_filters(mock_manager: MockerFixture) -> None:
 def test_analyze_race_chakudo_empty_result(mock_manager: MockerFixture) -> None:
     """空結果でcount=0を返す."""
     empty_df = pd.DataFrame(columns=[
-        "grp", "sort_key", "total", "wins", "second", "third",
+        "grp", "total", "wins", "second", "third",
         "chakugai", "win_rate", "fukusho_rate", "tansho_kaishuu", "fukusho_kaishuu",
     ])
     mock_manager.fetch_dataframe.return_value = empty_df
@@ -607,7 +621,6 @@ def test_analyze_race_chakudo_empty_result(mock_manager: MockerFixture) -> None:
         mock_manager,
         group_expr="u.tansho_ninkijun",
         sort_expr="CAST(u.tansho_ninkijun AS INTEGER)",
-        race_name="存在しないレース",
     )
 
     assert result["success"] is True
@@ -617,7 +630,7 @@ def test_analyze_race_chakudo_empty_result(mock_manager: MockerFixture) -> None:
 
 def test_analyze_race_chakudo_keibajo_in_where_without_cw(mock_manager: MockerFixture) -> None:
     """course_kubunなし時はkeibajoがWHERE句に入る."""
-    mock_manager.fetch_dataframe.return_value = _make_chakudo_df()
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_multi_df()
 
     analyze_race_chakudo(
         mock_manager,
@@ -633,7 +646,7 @@ def test_analyze_race_chakudo_keibajo_in_where_without_cw(mock_manager: MockerFi
 
 def test_analyze_race_chakudo_with_course_week_filter(mock_manager: MockerFixture) -> None:
     """course_kubun+week_in_course指定時にcw_targetがSQLに含まれkeibajoはCTE側で処理される."""
-    mock_manager.fetch_dataframe.return_value = _make_chakudo_df()
+    mock_manager.fetch_dataframe.return_value = _make_chakudo_multi_df()
 
     analyze_race_chakudo(
         mock_manager,
