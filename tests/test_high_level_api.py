@@ -204,6 +204,43 @@ def test_analyze_waku_seiseki_with_filters(mock_manager: MockerFixture) -> None:
     assert result["results"][0]["win_rate"] == 16.0
 
 
+# 正常系: course_kubun / week_in_course フィルタ
+
+
+def test_analyze_waku_seiseki_with_course_week_filter(mock_manager: MockerFixture) -> None:
+    """course_kubunとweek_in_courseを指定可能."""
+    df = pd.DataFrame({
+        "wakuban": ["1"],
+        "total": [30],
+        "wins": [6],
+        "fukusho": [12],
+    })
+    mock_manager.fetch_dataframe.return_value = df
+
+    result = analyze_waku_seiseki(
+        mock_manager, keibajo="05", kyori=1600, year_from="2021",
+        course_kubun="C", week_in_course=2,
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 1
+    assert result["results"][0]["win_rate"] == 20.0
+
+
+def test_analyze_ninki_seiseki_with_course_week_filter(mock_manager: MockerFixture) -> None:
+    """course_kubunとweek_in_courseを指定可能."""
+    df = pd.DataFrame({"total": [80], "wins": [16], "fukusho": [32]})
+    mock_manager.fetch_dataframe.return_value = df
+
+    result = analyze_ninki_seiseki(
+        mock_manager, ninki=1, keibajo="05", course_kubun="C", week_in_course=2
+    )
+
+    assert result["success"] is True
+    assert result["total"] == 80
+    assert result["win_rate"] == 20.0
+
+
 # 準正常系: DBエラー
 
 

@@ -442,6 +442,8 @@ def tool_analyze_ninki_seiseki(
     grade: str | None = None,
     year_from: str | None = None,
     kyori: int | None = None,
+    course_kubun: str | None = None,
+    week_in_course: int | None = None,
 ) -> dict[str, Any]:
     """指定人気順位の勝率・複勝率・出走数・勝利数を集計する。
 
@@ -451,11 +453,16 @@ def tool_analyze_ninki_seiseki(
         grade (str | None): グレードコード（例: 'A'=GI）
         year_from (str | None): 集計開始年（4桁文字列、例: '2020'）
         kyori (int | None): 距離（メートル単位）
+        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
+        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
 
     Returns:
         dict: 出走数・勝利数・勝率・複勝数・複勝率を含む辞書
     """
-    return analyze_ninki_seiseki(_get_connection_manager(), ninki, keibajo, grade, year_from, kyori)
+    return analyze_ninki_seiseki(
+        _get_connection_manager(), ninki, keibajo, grade, year_from, kyori,
+        course_kubun, week_in_course,
+    )
 
 
 @mcp.tool()
@@ -464,6 +471,8 @@ def tool_analyze_kishu_seiseki(
     keibajo: str | None = None,
     year_from: str | None = None,
     kyori: int | None = None,
+    course_kubun: str | None = None,
+    week_in_course: int | None = None,
 ) -> dict[str, Any]:
     """騎手名（部分一致）で勝率・複勝率・騎乗数を集計する。
 
@@ -472,11 +481,16 @@ def tool_analyze_kishu_seiseki(
         keibajo (str | None): 競馬場コード
         year_from (str | None): 集計開始年
         kyori (int | None): 距離（メートル）
+        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
+        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
 
     Returns:
         dict: 騎手名・騎乗数・勝利数・勝率・複勝率を含む辞書
     """
-    return analyze_kishu_seiseki(_get_connection_manager(), kishu_name, keibajo, year_from, kyori)
+    return analyze_kishu_seiseki(
+        _get_connection_manager(), kishu_name, keibajo, year_from, kyori,
+        course_kubun, week_in_course,
+    )
 
 
 @mcp.tool()
@@ -485,6 +499,8 @@ def tool_analyze_sire_seiseki(
     keibajo: str | None = None,
     kyori: int | None = None,
     year_from: str | None = None,
+    course_kubun: str | None = None,
+    week_in_course: int | None = None,
 ) -> dict[str, Any]:
     """種牡馬（父馬）名で産駒の勝率・複勝率を集計する。
 
@@ -493,28 +509,39 @@ def tool_analyze_sire_seiseki(
         keibajo (str | None): 競馬場コード
         kyori (int | None): 距離（メートル）
         year_from (str | None): 集計開始年
+        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
+        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
 
     Returns:
         dict: 種牡馬名・産駒出走数・勝利数・勝率・複勝率を含む辞書
     """
-    return analyze_sire_seiseki(_get_connection_manager(), sire_name, keibajo, kyori, year_from)
+    return analyze_sire_seiseki(
+        _get_connection_manager(), sire_name, keibajo, kyori, year_from,
+        course_kubun, week_in_course,
+    )
 
 
 @mcp.tool()
 def tool_get_uma_rekisen(
     uma_name: str,
     year_from: str | None = None,
+    course_kubun: str | None = None,
+    week_in_course: int | None = None,
 ) -> dict[str, Any]:
     """馬名（部分一致）で過去レース戦績一覧を取得する。
 
     Args:
         uma_name (str): 馬名（部分一致で検索）
         year_from (str | None): 集計開始年
+        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
+        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
 
     Returns:
         dict: 日付・競馬場・レース名・着順・タイム・騎手を含む戦績リスト
     """
-    return get_uma_rekisen(_get_connection_manager(), uma_name, year_from)
+    return get_uma_rekisen(
+        _get_connection_manager(), uma_name, year_from, course_kubun, week_in_course
+    )
 
 
 @mcp.tool()
@@ -522,6 +549,8 @@ def tool_analyze_waku_seiseki(
     keibajo: str | None = None,
     kyori: int | None = None,
     year_from: str | None = None,
+    course_kubun: str | None = None,
+    week_in_course: int | None = None,
 ) -> dict[str, Any]:
     """枠番（1〜8）別の勝率・複勝率を集計する。
 
@@ -529,11 +558,15 @@ def tool_analyze_waku_seiseki(
         keibajo (str | None): 競馬場コード
         kyori (int | None): 距離（メートル）
         year_from (str | None): 集計開始年
+        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
+        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
 
     Returns:
         dict: 枠番ごとの出走数・勝利数・勝率・複勝率を含む辞書
     """
-    return analyze_waku_seiseki(_get_connection_manager(), keibajo, kyori, year_from)
+    return analyze_waku_seiseki(
+        _get_connection_manager(), keibajo, kyori, year_from, course_kubun, week_in_course
+    )
 
 
 def _get_connection_manager() -> ConnectionManager:
