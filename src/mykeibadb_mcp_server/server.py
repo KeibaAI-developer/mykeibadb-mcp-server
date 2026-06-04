@@ -584,12 +584,15 @@ def tool_get_uma_chokyo(
         uma_name (str): 馬名（部分一致で検索）
         before_debut (bool): Trueの場合はデビュー前の調教のみ取得
         year_from (str | None): 集計開始年（4桁文字列）
-        limit (int): コース別最大取得件数（デフォルト30）
+        limit (int): ウッドチップ・坂路を合算した最大取得件数（デフォルト30）
 
     Returns:
         dict: 馬名・デビュー日・ウッドチップ/坂路調教レコード一覧を含む辞書
     """
-    return get_uma_chokyo(_get_connection_manager(), uma_name, before_debut, year_from, limit)
+    clamped_limit = max(1, min(limit, _MAX_QUERY_ROWS))
+    return get_uma_chokyo(
+        _get_connection_manager(), uma_name, before_debut, year_from, clamped_limit
+    )
 
 
 @mcp.tool()

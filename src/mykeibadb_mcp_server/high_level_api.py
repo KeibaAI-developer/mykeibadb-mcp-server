@@ -441,12 +441,13 @@ def get_uma_chokyo(
         uma_name (str): 馬名（部分一致）
         before_debut (bool): Trueの場合はデビュー前の調教のみ取得
         year_from (str | None): 集計開始年（4桁文字列）
-        limit (int): コース別最大取得件数（デフォルト30）
+        limit (int): ウッドチップ・坂路を合算した最大取得件数（デフォルト30）
 
     Returns:
         dict: 馬名・デビュー日・ウッドチップ/坂路調教レコード一覧を含む辞書
     """
     try:
+        limit = max(1, limit)
         horse_sql = """
             SELECT km2.ketto_toroku_bango, km2.bamei,
                    MIN(u.kaisai_nen || u.kaisai_gappi) AS debut_date
