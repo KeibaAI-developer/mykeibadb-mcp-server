@@ -30,6 +30,7 @@ from mykeibadb_mcp_server.high_level_api import (
     analyze_chokyo_debut_seiseki,
     analyze_kishu_seiseki,
     analyze_ninki_seiseki,
+    analyze_race_chakudo,
     analyze_sire_seiseki,
     analyze_waku_seiseki,
     get_uma_chokyo,
@@ -62,6 +63,39 @@ _CODE_CONVERTERS: dict[str, Callable[[str], str]] = {
 }
 
 _MAX_QUERY_ROWS = 200
+
+_CHAKUDO_GROUP_SPECS: dict[str, tuple[str, str]] = {
+    "ninki_range": (
+        """CASE
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 1 THEN '1人気'
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 2 THEN '2人気'
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 3 THEN '3人気'
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) BETWEEN 4 AND 6 THEN '4-6人気'
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) BETWEEN 7 AND 9 THEN '7-9人気'
+                ELSE '10人気以下'
+            END""",
+        """CASE
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 1 THEN 1
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 2 THEN 2
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 3 THEN 3
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) BETWEEN 4 AND 6 THEN 4
+                WHEN CAST(u.tansho_ninkijun AS INTEGER) BETWEEN 7 AND 9 THEN 5
+                ELSE 6
+            END""",
+    ),
+    "ninki": (
+        "CAST(u.tansho_ninkijun AS INTEGER)::TEXT",
+        "CAST(u.tansho_ninkijun AS INTEGER)",
+    ),
+    "waku": (
+        "CAST(u.wakuban AS INTEGER)::TEXT",
+        "CAST(u.wakuban AS INTEGER)",
+    ),
+    "keibajo": (
+        "r.keibajo_code",
+        "r.keibajo_code",
+    ),
+}
 
 
 @mcp.tool()
@@ -624,6 +658,47 @@ def tool_analyze_chokyo_debut_seiseki(
         debut_date_from, debut_date_to, tracen_kubun,
         wood_time_6f_max, wood_laptime_1f_max,
         hanro_time_4f_max, hanro_laptime_1f_max,
+    )
+
+
+@mcp.tool()
+def tool_analyze_race_chakudo(
+    group_by: str,
+    race_name: str | None = None,
+    keibajo: str | None = None,
+    kyori: int | None = None,
+    year_from: str | None = None,
+    year_to: str | None = None,
+    grade: str | None = None,
+    course_kubun: str | None = None,
+    week_in_course: int | None = None,
+) -> dict[str, Any]:
+    """レース結果を指定グループ別に着度数・勝率・複勝率・回収率で集計する。
+
+    Args:
+        group_by (str): グループ化種別。ninki_range/ninki/waku/keibajo のいずれか
+        race_name (str | None): レース名（部分一致）
+        keibajo (str | None): 競馬場コード
+        kyori (int | None): 距離（メートル）
+        year_from (str | None): 集計開始年（4桁文字列）
+        year_to (str | None): 集計終了年（4桁文字列）
+        grade (str | None): グレードコード
+        course_kubun (str | None): コース区分（week_in_courseと共に指定）
+        week_in_course (int | None): コース使用開始からの週番号（course_kubunと共に指定）
+
+    Returns:
+        dict: グループ別の着度数・勝率・複勝率・回収率を含む辞書
+    """
+    supported = list(_CHAKUDO_GROUP_SPECS.keys())
+    if group_by not in _CHAKUDO_GROUP_SPECS:
+        return {"success": False, "error": f"group_byは {supported} のいずれかを指定してください"}
+    group_expr, sort_expr = _CHAKUDO_GROUP_SPECS[group_by]
+    return analyze_race_chakudo(
+        _get_connection_manager(),
+        group_expr, sort_expr,
+        race_name, keibajo, kyori,
+        year_from, year_to, grade,
+        course_kubun, week_in_course,
     )
 
 
