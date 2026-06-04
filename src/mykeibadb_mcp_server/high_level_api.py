@@ -3,12 +3,20 @@
 from dataclasses import asdict
 from typing import Any
 
-import pandas as pd
-from mykeibadb.analytics import RaceCondition, analyze_chakudo, analyze_subject_chakudo
-from mykeibadb.analytics._cte_helpers import build_course_week_cte
-from mykeibadb.analytics._models import Subject
+from mykeibadb.analytics import (
+    ChokyoCondition,
+    ChokyoThreshold,
+    RaceCondition,
+    Subject,
+    analyze_chakudo,
+)
+from mykeibadb.analytics import (
+    analyze_chokyo_debut_seiseki as analytics_analyze_chokyo_debut_seiseki,
+)
+from mykeibadb.analytics import analyze_subject_chakudo
+from mykeibadb.analytics import get_uma_chokyo as analytics_get_uma_chokyo
+from mykeibadb.analytics import get_uma_rekisen as analytics_get_uma_rekisen
 from mykeibadb.connection import ConnectionManager
-from mykeibadb.exceptions import MykeibaDBError
 
 
 def analyze_ninki_seiseki(
@@ -157,68 +165,14 @@ def get_uma_rekisen(
         week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
 
     Returns:
-        dict: 日付・競馬場・レース名・着順・タイム・騎手を含む戦績リスト
+        dict: 競走成績リストを含む辞書
     """
-    try:
-        cte_params: list[Any] = []
-        cte_sql, join_sql = "", ""
-        if course_kubun is not None and week_in_course is not None:
-            cte_sql, join_sql = build_course_week_cte(
-                None, course_kubun, week_in_course, cte_params
-            )
-
-        where_clauses = ["km2.bamei LIKE %s"]
-        where_params: list[Any] = [f"%{uma_name}%"]
-
-        if year_from:
-            where_clauses.append("r.kaisai_nen >= %s")
-            where_params.append(year_from)
-
-        where = " AND ".join(where_clauses)
-        with_clause = f"WITH RECURSIVE {cte_sql}" if cte_sql else ""
-        sql = f"""
-            {with_clause}
-            SELECT
-                km2.bamei,
-                r.kaisai_nen,
-                r.kaisai_gappi,
-                r.keibajo_code,
-                r.kyosomei_hondai AS race_name,
-                r.grade_code,
-                r.kyori,
-                u.kakutei_chakujun,
-                u.soha_time,
-                u.kishumei_ryakusho,
-                u.tansho_ninkijun,
-                u.tansho_odds
-            FROM umagoto_race_joho u
-            JOIN race_shosai r ON u.race_code = r.race_code
-            JOIN kyosoba_master2 km2 ON u.ketto_toroku_bango = km2.ketto_toroku_bango
-            {join_sql}
-            WHERE {where}
-            ORDER BY r.kaisai_nen DESC, r.kaisai_gappi DESC
-        """
-        params = tuple(cte_params + where_params)
-        df = manager.fetch_dataframe(sql, params=params)
-        records = []
-        for _, row in df.iterrows():
-            records.append({
-                "bamei": row["bamei"],
-                "kaisai_nen": row["kaisai_nen"],
-                "kaisai_gappi": row["kaisai_gappi"],
-                "keibajo_code": row["keibajo_code"],
-                "race_name": row["race_name"],
-                "grade_code": row["grade_code"],
-                "kyori": row["kyori"],
-                "kakutei_chakujun": row["kakutei_chakujun"],
-                "soha_time": row["soha_time"],
-                "kishumei_ryakusho": row["kishumei_ryakusho"],
-                "tansho_ninkijun": row["tansho_ninkijun"],
-                "tansho_odds": row["tansho_odds"],
-            })
-        return {"success": True, "results": records, "count": len(records)}
-    except MykeibaDBError as e:
-        return {"success": False, "error": str(e)}
+    condition = RaceCondition(
+        year_from=year_from,
+        course_kubun=course_kubun,
+        week_in_course=week_in_course,
+    )
+    return analytics_get_uma_rekisen(manager, uma_name=uma_name, condition=condition)
 
 
 def analyze_waku_seiseki(
@@ -276,126 +230,49 @@ def get_uma_chokyo(
     Args:
         manager (ConnectionManager): DBコネクションマネージャ
         uma_name (str): 馬名（部分一致）
-        before_debut (bool): Trueの場合はデビュー前の調教のみ取得
-        year_from (str | None): 集計開始年（4桁文字列）
-        limit (int): ウッドチップ・坂路を合算した最大取得件数（デフォルト30）
+        before_debut (bool): Trueの場合はデビュー日以前の調教のみ取得
+        year_from (str | None): 取得開始年（4桁文字列）
+        limit (int): ウッドチップ・坂路それぞれの最大取得件数（デフォルト30）
 
     Returns:
         dict: 馬名・デビュー日・ウッドチップ/坂路調教レコード一覧を含む辞書
     """
-    try:
-        limit = max(1, limit)
-        horse_sql = """
-            SELECT km2.ketto_toroku_bango, km2.bamei,
-                   MIN(u.kaisai_nen || u.kaisai_gappi) AS debut_date
-            FROM kyosoba_master2 km2
-            LEFT JOIN umagoto_race_joho u
-                ON km2.ketto_toroku_bango = u.ketto_toroku_bango
-                AND u.kakutei_chakujun != '00'
-            WHERE km2.bamei LIKE %s
-            GROUP BY km2.ketto_toroku_bango, km2.bamei
-        """
-        horses_df = manager.fetch_dataframe(horse_sql, params=(f"%{uma_name}%",))
-        if horses_df.empty:
-            return {"success": True, "count": 0, "results": []}
+    rekisen_result = analytics_get_uma_rekisen(manager, uma_name=uma_name)
+    if not rekisen_result["success"]:
+        return rekisen_result
 
-        results = []
-        for _, horse in horses_df.iterrows():
-            ketto = str(horse["ketto_toroku_bango"])
-            bamei = str(horse["bamei"])
-            raw_debut = horse["debut_date"]
-            debut_date_str = str(raw_debut) if pd.notna(raw_debut) else None
+    horses: dict[str, dict[str, Any]] = {}
+    for r in rekisen_result["results"]:
+        ketto = r["ketto_toroku_bango"]
+        if ketto not in horses:
+            horses[ketto] = {"bamei": r["bamei"], "debut_date": r["race_date"]}
+        else:
+            if r["race_date"] < horses[ketto]["debut_date"]:
+                horses[ketto]["debut_date"] = r["race_date"]
 
-            date_filter_parts: list[str] = []
-            date_extra_params: list[Any] = []
-            if before_debut and debut_date_str:
-                date_filter_parts.append("AND chokyo_nengappi < %s")
-                date_extra_params.append(debut_date_str)
-            if year_from:
-                date_filter_parts.append("AND chokyo_nengappi >= %s")
-                date_extra_params.append(f"{year_from}0101")
-            date_filter = " ".join(date_filter_parts)
+    if not horses:
+        return {"success": True, "count": 0, "results": []}
 
-            wood_sql = f"""
-                SELECT tracen_kubun, chokyo_nengappi, chokyo_jikoku,
-                       time_gokei_6furlong, time_gokei_5furlong,
-                       time_gokei_4furlong,
-                       laptime_1furlong, laptime_2furlong, laptime_3furlong
-                FROM woodchip_chokyo
-                WHERE ketto_toroku_bango = %s
-                  AND time_gokei_6furlong NOT IN ('0000', '9999')
-                  {date_filter}
-                ORDER BY chokyo_nengappi DESC, chokyo_jikoku DESC
-                LIMIT %s
-            """
-            wood_df = manager.fetch_dataframe(
-                wood_sql, params=tuple([ketto] + date_extra_params + [limit])
-            )
+    results = []
+    for ketto, info in horses.items():
+        date_from = f"{year_from}0101" if year_from else None
+        date_to = info["debut_date"] if before_debut else None
 
-            hanro_sql = f"""
-                SELECT tracen_kubun, chokyo_nengappi, chokyo_jikoku,
-                       time_gokei_4furlong,
-                       lap_time_1furlong, lap_time_2furlong,
-                       lap_time_3furlong, lap_time_4furlong
-                FROM hanro_chokyo
-                WHERE ketto_toroku_bango = %s
-                  AND time_gokei_4furlong NOT IN ('0000', '9999')
-                  {date_filter}
-                ORDER BY chokyo_nengappi DESC, chokyo_jikoku DESC
-                LIMIT %s
-            """
-            hanro_df = manager.fetch_dataframe(
-                hanro_sql, params=tuple([ketto] + date_extra_params + [limit])
-            )
+        chokyo_result = analytics_get_uma_chokyo(
+            manager, ketto_toroku_bango=ketto, date_from=date_from, date_to=date_to
+        )
+        if not chokyo_result["success"]:
+            return chokyo_result
 
-            wood_records = []
-            for _, r in wood_df.iterrows():
-                tracen = "美浦" if str(r["tracen_kubun"]) == "0" else "栗東"
-                wood_records.append({
-                    "course_type": "ウッドチップ",
-                    "tracen": tracen,
-                    "date": str(r["chokyo_nengappi"]),
-                    "jikoku": str(r["chokyo_jikoku"]),
-                    "time_6f": _fmt_time4(str(r["time_gokei_6furlong"])),
-                    "time_5f": _fmt_time4(str(r["time_gokei_5furlong"])),
-                    "time_4f": _fmt_time4(str(r["time_gokei_4furlong"])),
-                    "lap_1f": _fmt_lap3(str(r["laptime_1furlong"])),
-                    "lap_2f": _fmt_lap3(str(r["laptime_2furlong"])),
-                    "lap_3f": _fmt_lap3(str(r["laptime_3furlong"])),
-                })
+        results.append({
+            "bamei": info["bamei"],
+            "ketto_toroku_bango": ketto,
+            "debut_date": info["debut_date"],
+            "wood_records": chokyo_result["wood_records"][:limit],
+            "hanro_records": chokyo_result["hanro_records"][:limit],
+        })
 
-            hanro_records = []
-            for _, r in hanro_df.iterrows():
-                tracen = "美浦" if str(r["tracen_kubun"]) == "0" else "栗東"
-                hanro_records.append({
-                    "course_type": "坂路",
-                    "tracen": tracen,
-                    "date": str(r["chokyo_nengappi"]),
-                    "jikoku": str(r["chokyo_jikoku"]),
-                    "time_4f": _fmt_time4(str(r["time_gokei_4furlong"])),
-                    "lap_1f": _fmt_lap3(str(r["lap_time_1furlong"])),
-                    "lap_2f": _fmt_lap3(str(r["lap_time_2furlong"])),
-                    "lap_3f": _fmt_lap3(str(r["lap_time_3furlong"])),
-                    "lap_4f": _fmt_lap3(str(r["lap_time_4furlong"])),
-                })
-
-            all_records = sorted(
-                wood_records + hanro_records,
-                key=lambda x: (x["date"], x["jikoku"]),
-                reverse=True,
-            )[:limit]
-
-            results.append({
-                "bamei": bamei,
-                "debut_date": debut_date_str,
-                "wood_count": len(wood_records),
-                "hanro_count": len(hanro_records),
-                "chokyo": all_records,
-            })
-
-        return {"success": True, "count": len(results), "results": results}
-    except MykeibaDBError as e:
-        return {"success": False, "error": str(e)}
+    return {"success": True, "count": len(results), "results": results}
 
 
 def analyze_chokyo_debut_seiseki(
@@ -426,114 +303,30 @@ def analyze_chokyo_debut_seiseki(
     Returns:
         dict: 条件を満たす馬の頭数・勝利馬数・勝利率を含む辞書
     """
-    try:
-        use_wood = wood_time_6f_max is not None or wood_laptime_1f_max is not None
-        use_hanro = hanro_time_4f_max is not None or hanro_laptime_1f_max is not None
-        cte_parts: list[str] = []
-        sql_params: list[Any] = []
-
-        cte_parts.append("""
-    debut_horses AS (
-        SELECT ketto_toroku_bango,
-               MIN(kaisai_nen || kaisai_gappi) AS debut_date
-        FROM umagoto_race_joho
-        WHERE kakutei_chakujun != '00'
-        GROUP BY ketto_toroku_bango
-        HAVING MIN(kaisai_nen || kaisai_gappi) BETWEEN %s AND %s
-    )""")
-        sql_params.extend([debut_date_from, debut_date_to])
-
-        if use_wood:
-            wood_conds = ["w.time_gokei_6furlong NOT IN ('0000', '9999')"]
-            if tracen_kubun:
-                wood_conds.append("w.tracen_kubun = %s")
-                sql_params.append(tracen_kubun)
-            if wood_time_6f_max is not None:
-                wood_conds.append("CAST(w.time_gokei_6furlong AS INTEGER) <= %s")
-                sql_params.append(wood_time_6f_max)
-            if wood_laptime_1f_max is not None:
-                wood_conds.append("w.laptime_1furlong NOT IN ('000', '999')")
-                wood_conds.append("CAST(w.laptime_1furlong AS INTEGER) <= %s")
-                sql_params.append(wood_laptime_1f_max)
-            wood_where = " AND ".join(wood_conds)
-            cte_parts.append(f"""
-    wood_qualified AS (
-        SELECT DISTINCT w.ketto_toroku_bango
-        FROM woodchip_chokyo w
-        JOIN debut_horses d ON w.ketto_toroku_bango = d.ketto_toroku_bango
-        WHERE w.chokyo_nengappi < d.debut_date
-          AND {wood_where}
-    )""")
-
-        if use_hanro:
-            hanro_conds = ["h.time_gokei_4furlong NOT IN ('0000', '9999')"]
-            if tracen_kubun:
-                hanro_conds.append("h.tracen_kubun = %s")
-                sql_params.append(tracen_kubun)
-            if hanro_time_4f_max is not None:
-                hanro_conds.append("CAST(h.time_gokei_4furlong AS INTEGER) <= %s")
-                sql_params.append(hanro_time_4f_max)
-            if hanro_laptime_1f_max is not None:
-                hanro_conds.append("h.lap_time_1furlong NOT IN ('000', '999')")
-                hanro_conds.append("CAST(h.lap_time_1furlong AS INTEGER) <= %s")
-                sql_params.append(hanro_laptime_1f_max)
-            hanro_where = " AND ".join(hanro_conds)
-            cte_parts.append(f"""
-    hanro_qualified AS (
-        SELECT DISTINCT h.ketto_toroku_bango
-        FROM hanro_chokyo h
-        JOIN debut_horses d ON h.ketto_toroku_bango = d.ketto_toroku_bango
-        WHERE h.chokyo_nengappi < d.debut_date
-          AND {hanro_where}
-    )""")
-
-        cte_parts.append("""
-    winners AS (
-        SELECT DISTINCT ketto_toroku_bango
-        FROM umagoto_race_joho
-        WHERE kakutei_chakujun = '01'
-          AND kaisai_nen || kaisai_gappi BETWEEN %s AND %s
-    )""")
-        sql_params.extend([debut_date_from, debut_date_to])
-
-        if use_wood and use_hanro:
-            qualified_from = (
-                "(SELECT ketto_toroku_bango FROM wood_qualified "
-                "INTERSECT "
-                "SELECT ketto_toroku_bango FROM hanro_qualified) qualified"
-            )
-        elif use_wood:
-            qualified_from = "wood_qualified qualified"
-        elif use_hanro:
-            qualified_from = "hanro_qualified qualified"
-        else:
-            qualified_from = "debut_horses qualified"
-
-        cte_sql = ",".join(cte_parts)
-        sql = f"""
-    WITH {cte_sql}
-    SELECT
-        COUNT(DISTINCT qualified.ketto_toroku_bango) AS total,
-        COUNT(DISTINCT CASE WHEN winners.ketto_toroku_bango IS NOT NULL
-            THEN qualified.ketto_toroku_bango END) AS winners
-    FROM {qualified_from}
-    LEFT JOIN winners ON qualified.ketto_toroku_bango = winners.ketto_toroku_bango
-        """
-
-        df = manager.fetch_dataframe(sql, params=tuple(sql_params))
-        row = df.iloc[0]
-        total = int(row["total"])
-        win_count = int(row["winners"])
-        return {
-            "success": True,
-            "debut_date_from": debut_date_from,
-            "debut_date_to": debut_date_to,
-            "total": total,
-            "winners": win_count,
-            "win_rate": round(win_count / total * 100, 1) if total > 0 else 0.0,
-        }
-    except MykeibaDBError as e:
-        return {"success": False, "error": str(e)}
+    condition: ChokyoCondition = []
+    if wood_time_6f_max is not None:
+        condition.append(ChokyoThreshold(
+            course="wood", metric="gokei", furlong=6,
+            max_value=wood_time_6f_max, tracen_kubun=tracen_kubun,
+        ))
+    if wood_laptime_1f_max is not None:
+        condition.append(ChokyoThreshold(
+            course="wood", metric="lap", furlong=1,
+            max_value=wood_laptime_1f_max, tracen_kubun=tracen_kubun,
+        ))
+    if hanro_time_4f_max is not None:
+        condition.append(ChokyoThreshold(
+            course="hanro", metric="gokei", furlong=4,
+            max_value=hanro_time_4f_max, tracen_kubun=tracen_kubun,
+        ))
+    if hanro_laptime_1f_max is not None:
+        condition.append(ChokyoThreshold(
+            course="hanro", metric="lap", furlong=1,
+            max_value=hanro_laptime_1f_max, tracen_kubun=tracen_kubun,
+        ))
+    return analytics_analyze_chokyo_debut_seiseki(
+        manager, debut_date_from, debut_date_to, condition=condition
+    )
 
 
 def analyze_race_chakudo(
