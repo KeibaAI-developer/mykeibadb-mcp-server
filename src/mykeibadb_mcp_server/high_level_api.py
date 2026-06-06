@@ -3,7 +3,18 @@
 from dataclasses import asdict
 from typing import Any
 
-import mykeibadb.analytics as analytics
+from mykeibadb.analytics import (
+    ChokyoCondition,
+    ChokyoThreshold,
+    GroupBy,
+    RaceCondition,
+    Subject,
+    SubjectFilter,
+    analyze_chakudo,
+    analyze_chokyo_debut_seiseki as _analyze_chokyo_debut_seiseki,
+    get_uma_chokyo as _get_uma_chokyo,
+    get_uma_rekisen as _get_uma_rekisen,
+)
 from mykeibadb.connection import ConnectionManager
 
 
@@ -32,7 +43,7 @@ def analyze_ninki_seiseki(
     Returns:
         dict: 出走数・勝利数・勝率・複勝数・複勝率を含む辞書
     """
-    condition = analytics.RaceCondition(
+    condition = RaceCondition(
         keibajo_code=keibajo,
         grade_code=grade,
         year_from=year_from,
@@ -40,15 +51,12 @@ def analyze_ninki_seiseki(
         course_kubun=course_kubun,
         week_in_course=week_in_course,
     )
-    result = analytics.analyze_chakudo(
-        manager,
-        group_expr="CAST(TRIM(u.tansho_ninkijun) AS INTEGER)",
-        sort_expr="CAST(TRIM(u.tansho_ninkijun) AS INTEGER)",
-        condition=condition,
+    result = analyze_chakudo(
+        manager, [], condition, GroupBy(kind="race_col", column="u.tansho_ninkijun")
     )
     if not result.success:
         return {"success": False, "error": result.error}
-    ninki_rows = [r for r in result.rows if r.group == str(ninki)]
+    ninki_rows = [r for r in result.rows if int(r.group) == ninki]
     return {
         "success": True,
         "count": len(ninki_rows),
@@ -79,15 +87,18 @@ def analyze_kishu_seiseki(
     Returns:
         dict: 騎手名・騎乗数・勝利数・勝率・複勝率を含む辞書
     """
-    condition = analytics.RaceCondition(
+    condition = RaceCondition(
         keibajo_code=keibajo,
         year_from=year_from,
         kyori=kyori,
         course_kubun=course_kubun,
         week_in_course=week_in_course,
     )
-    result = analytics.analyze_subject_chakudo(
-        manager, analytics.Subject.KISHU, name=kishu_name, condition=condition
+    result = analyze_chakudo(
+        manager,
+        [SubjectFilter(subject=Subject.KISHU, name=kishu_name)],
+        condition,
+        GroupBy(kind="subject", subject=Subject.KISHU),
     )
     if not result.success:
         return {"success": False, "error": result.error}
@@ -121,15 +132,18 @@ def analyze_sire_seiseki(
     Returns:
         dict: 種牡馬名・産駒出走数・勝利数・勝率・複勝率を含む辞書
     """
-    condition = analytics.RaceCondition(
+    condition = RaceCondition(
         keibajo_code=keibajo,
         kyori=kyori,
         year_from=year_from,
         course_kubun=course_kubun,
         week_in_course=week_in_course,
     )
-    result = analytics.analyze_subject_chakudo(
-        manager, analytics.Subject.SIRE, name=sire_name, condition=condition
+    result = analyze_chakudo(
+        manager,
+        [SubjectFilter(subject=Subject.SIRE, name=sire_name)],
+        condition,
+        GroupBy(kind="subject", subject=Subject.SIRE),
     )
     if not result.success:
         return {"success": False, "error": result.error}
@@ -159,12 +173,12 @@ def get_uma_rekisen(
     Returns:
         dict: 競走成績リストを含む辞書
     """
-    condition = analytics.RaceCondition(
+    condition = RaceCondition(
         year_from=year_from,
         course_kubun=course_kubun,
         week_in_course=week_in_course,
     )
-    return analytics.get_uma_rekisen(manager, uma_name=uma_name, condition=condition)
+    return _get_uma_rekisen(manager, uma_name=uma_name, condition=condition)
 
 
 def analyze_waku_seiseki(
@@ -188,18 +202,15 @@ def analyze_waku_seiseki(
     Returns:
         dict: 枠番ごとの出走数・勝利数・勝率・複勝率を含む辞書
     """
-    condition = analytics.RaceCondition(
+    condition = RaceCondition(
         keibajo_code=keibajo,
         kyori=kyori,
         year_from=year_from,
         course_kubun=course_kubun,
         week_in_course=week_in_course,
     )
-    result = analytics.analyze_chakudo(
-        manager,
-        group_expr="TRIM(u.wakuban)",
-        sort_expr="TRIM(u.wakuban)",
-        condition=condition,
+    result = analyze_chakudo(
+        manager, [], condition, GroupBy(kind="race_col", column="u.wakuban")
     )
     if not result.success:
         return {"success": False, "error": result.error}
@@ -229,7 +240,7 @@ def get_uma_chokyo(
     Returns:
         dict: 馬名・デビュー日・ウッドチップ/坂路調教レコード一覧を含む辞書
     """
-    rekisen_result = analytics.get_uma_rekisen(manager, uma_name=uma_name)
+    rekisen_result = _get_uma_rekisen(manager, uma_name=uma_name)
     if not rekisen_result["success"]:
         return rekisen_result
 
@@ -250,7 +261,7 @@ def get_uma_chokyo(
         date_from = f"{year_from}0101" if year_from else None
         date_to = info["debut_date"] if before_debut else None
 
-        chokyo_result = analytics.get_uma_chokyo(
+        chokyo_result = _get_uma_chokyo(
             manager, ketto_toroku_bango=ketto, date_from=date_from, date_to=date_to
         )
         if not chokyo_result["success"]:
@@ -295,36 +306,35 @@ def analyze_chokyo_debut_seiseki(
     Returns:
         dict: 条件を満たす馬の頭数・勝利馬数・勝利率を含む辞書
     """
-    condition: analytics.ChokyoCondition = []
+    condition: ChokyoCondition = []
     if wood_time_6f_max is not None:
-        condition.append(analytics.ChokyoThreshold(
+        condition.append(ChokyoThreshold(
             course="wood", metric="gokei", furlong=6,
             max_value=wood_time_6f_max, tracen_kubun=tracen_kubun,
         ))
     if wood_laptime_1f_max is not None:
-        condition.append(analytics.ChokyoThreshold(
+        condition.append(ChokyoThreshold(
             course="wood", metric="lap", furlong=1,
             max_value=wood_laptime_1f_max, tracen_kubun=tracen_kubun,
         ))
     if hanro_time_4f_max is not None:
-        condition.append(analytics.ChokyoThreshold(
+        condition.append(ChokyoThreshold(
             course="hanro", metric="gokei", furlong=4,
             max_value=hanro_time_4f_max, tracen_kubun=tracen_kubun,
         ))
     if hanro_laptime_1f_max is not None:
-        condition.append(analytics.ChokyoThreshold(
+        condition.append(ChokyoThreshold(
             course="hanro", metric="lap", furlong=1,
             max_value=hanro_laptime_1f_max, tracen_kubun=tracen_kubun,
         ))
-    return analytics.analyze_chokyo_debut_seiseki(
+    return _analyze_chokyo_debut_seiseki(
         manager, debut_date_from, debut_date_to, condition=condition
     )
 
 
 def analyze_race_chakudo(
     manager: ConnectionManager,
-    group_expr: str,
-    sort_expr: str,
+    column: str,
     keibajo: str | None = None,
     kyori: int | None = None,
     year_from: str | None = None,
@@ -337,8 +347,7 @@ def analyze_race_chakudo(
 
     Args:
         manager (ConnectionManager): DBコネクションマネージャ
-        group_expr (str): グループ化SQL式（SELECT句に埋め込む）
-        sort_expr (str): ソートSQL式（ORDER BY句に埋め込む）
+        column (str): グループ化カラム名（SQL列参照、例: 'u.wakuban'）
         keibajo (str | None): 競馬場コード
         kyori (int | None): 距離（メートル）
         year_from (str | None): 集計開始年（4桁文字列）
@@ -350,7 +359,7 @@ def analyze_race_chakudo(
     Returns:
         dict: 集計結果を含む辞書
     """
-    condition = analytics.RaceCondition(
+    condition = RaceCondition(
         keibajo_code=keibajo,
         kyori=kyori,
         year_from=year_from,
@@ -359,7 +368,9 @@ def analyze_race_chakudo(
         course_kubun=course_kubun,
         week_in_course=week_in_course,
     )
-    result = analytics.analyze_chakudo(manager, group_expr, sort_expr, condition)
+    result = analyze_chakudo(
+        manager, [], condition, GroupBy(kind="race_col", column=column)
+    )
     if not result.success:
         return {"success": False, "error": result.error}
     return {
