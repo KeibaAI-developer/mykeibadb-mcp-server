@@ -64,38 +64,20 @@ _CODE_CONVERTERS: dict[str, Callable[[str], str]] = {
 
 _MAX_QUERY_ROWS = 200
 
-_CHAKUDO_GROUP_SPECS: dict[str, tuple[str, str]] = {
-    "ninki_range": (
-        """CASE
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 1 THEN '1人気'
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 2 THEN '2人気'
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 3 THEN '3人気'
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) BETWEEN 4 AND 6 THEN '4-6人気'
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) BETWEEN 7 AND 9 THEN '7-9人気'
-                ELSE '10人気以下'
-            END""",
-        """CASE
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 1 THEN 1
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 2 THEN 2
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) = 3 THEN 3
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) BETWEEN 4 AND 6 THEN 4
-                WHEN CAST(u.tansho_ninkijun AS INTEGER) BETWEEN 7 AND 9 THEN 5
-                ELSE 6
-            END""",
-    ),
-    "ninki": (
-        "CAST(u.tansho_ninkijun AS INTEGER)::TEXT",
-        "CAST(u.tansho_ninkijun AS INTEGER)",
-    ),
-    "waku": (
-        "CAST(u.wakuban AS INTEGER)::TEXT",
-        "CAST(u.wakuban AS INTEGER)",
-    ),
-    "keibajo": (
-        "r.keibajo_code",
-        "r.keibajo_code",
-    ),
+_CHAKUDO_GROUP_SPECS: dict[str, str] = {
+    "ninki_range": "u.tansho_ninkijun",
+    "ninki": "u.tansho_ninkijun",
+    "waku": "u.wakuban",
+    "keibajo": "r.keibajo_code",
 }
+
+_NINKI_RANGE_GROUPS: list[tuple[str, set[str]]] = [
+    ("1人気", {"1"}),
+    ("2人気", {"2"}),
+    ("3人気", {"3"}),
+    ("4-6人気", {"4", "5", "6"}),
+    ("7-9人気", {"7", "8", "9"}),
+]
 
 
 @mcp.tool()
@@ -692,14 +674,91 @@ def tool_analyze_race_chakudo(
     supported = list(_CHAKUDO_GROUP_SPECS.keys())
     if group_by not in _CHAKUDO_GROUP_SPECS:
         return {"success": False, "error": f"group_byは {supported} のいずれかを指定してください"}
-    group_expr, sort_expr = _CHAKUDO_GROUP_SPECS[group_by]
-    return analyze_race_chakudo(
+    column = _CHAKUDO_GROUP_SPECS[group_by]
+    result = analyze_race_chakudo(
         _get_connection_manager(),
-        group_expr, sort_expr,
-        race_name, keibajo, kyori,
-        year_from, year_to, grade,
-        course_kubun, week_in_course,
+        column,
+        keibajo=keibajo,
+        kyori=kyori,
+        year_from=year_from,
+        year_to=year_to,
+        grade=grade,
+        course_kubun=course_kubun,
+        week_in_course=week_in_course,
     )
+    if group_by != "ninki_range" or not result.get("success"):
+        return result
+    return _merge_ninki_range(result)
+
+
+def _merge_ninki_range(result: dict[str, Any]) -> dict[str, Any]:
+    """ninki_range グループを後処理でマージする。
+
+    analyze_chakudo はゼロ埋め人気順位（"01"〜"18"等）をそのまま返すため、
+    1人気〜10人気以下の6グループに集約する。
+
+    Args:
+        result (dict[str, Any]): analyze_race_chakudo の成功レスポンス
+
+    Returns:
+        dict[str, Any]: グループマージ済みのレスポンス
+    """
+    raw: dict[str, dict[str, Any]] = {
+        (str(int(r["group"])) if r["group"].isdigit() else r["group"]): r
+        for r in result["results"]
+    }
+
+    merged_rows: list[dict[str, Any]] = []
+    for label, grp_set in _NINKI_RANGE_GROUPS:
+        members = [raw[k] for k in grp_set if k in raw]
+        if not members:
+            continue
+        total = sum(m["total"] for m in members)
+        wins = sum(m["wins"] for m in members)
+        second = sum(m["second"] for m in members)
+        third = sum(m["third"] for m in members)
+        chakugai = sum(m["chakugai"] for m in members)
+        tansho_w = sum(m["total"] * m["tansho_kaishuu"] for m in members)
+        fukusho_w = sum(m["total"] * m["fukusho_kaishuu"] for m in members)
+        merged_rows.append({
+            "group": label,
+            "total": total,
+            "wins": wins,
+            "second": second,
+            "third": third,
+            "chakugai": chakugai,
+            "win_rate": round(wins * 100.0 / total, 1) if total else 0.0,
+            "fukusho_rate": round((wins + second + third) * 100.0 / total, 1) if total else 0.0,
+            "tansho_kaishuu": round(tansho_w / total, 1) if total else 0.0,
+            "fukusho_kaishuu": round(fukusho_w / total, 1) if total else 0.0,
+        })
+
+    juninki_ika = [
+        r for r in result["results"]
+        if r.get("group", "").isdigit() and int(r["group"]) >= 10
+    ]
+    if juninki_ika:
+        total = sum(m["total"] for m in juninki_ika)
+        wins = sum(m["wins"] for m in juninki_ika)
+        second = sum(m["second"] for m in juninki_ika)
+        third = sum(m["third"] for m in juninki_ika)
+        chakugai = sum(m["chakugai"] for m in juninki_ika)
+        tansho_w = sum(m["total"] * m["tansho_kaishuu"] for m in juninki_ika)
+        fukusho_w = sum(m["total"] * m["fukusho_kaishuu"] for m in juninki_ika)
+        merged_rows.append({
+            "group": "10人気以下",
+            "total": total,
+            "wins": wins,
+            "second": second,
+            "third": third,
+            "chakugai": chakugai,
+            "win_rate": round(wins * 100.0 / total, 1) if total else 0.0,
+            "fukusho_rate": round((wins + second + third) * 100.0 / total, 1) if total else 0.0,
+            "tansho_kaishuu": round(tansho_w / total, 1) if total else 0.0,
+            "fukusho_kaishuu": round(fukusho_w / total, 1) if total else 0.0,
+        })
+
+    return {"success": True, "count": len(merged_rows), "results": merged_rows}
 
 
 def _get_connection_manager() -> ConnectionManager:
