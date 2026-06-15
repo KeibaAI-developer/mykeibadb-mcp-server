@@ -37,9 +37,12 @@ def run_analyze_chakudo(
         dict: success / count / results（ChakudoRowのasdictリスト）。
               失敗時はsuccess=False / error。
     """
-    entry_filters = [build_entry_filter(f) for f in (filters or [])]
-    race_condition = RaceCondition.from_dict(condition) if condition else None
-    group = GroupBy.from_dict(group_by) if group_by else None
+    try:
+        entry_filters = [build_entry_filter(f) for f in (filters or [])]
+        race_condition = RaceCondition.from_dict(condition) if condition else None
+        group = GroupBy.from_dict(group_by) if group_by else None
+    except (KeyError, TypeError, ValueError) as e:
+        return {"success": False, "error": f"invalid argument: {e}"}
     result = analyze_chakudo(manager, entry_filters, race_condition, group)
     if not result.success:
         return {"success": False, "error": result.error}

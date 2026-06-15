@@ -442,3 +442,23 @@ def test_run_analyze_chakudo_returns_error_on_db_failure(mock_manager: MockerFix
 
     assert result["success"] is False
     assert "error" in result
+
+
+def test_run_analyze_chakudo_returns_error_for_unknown_filter_type(
+    mock_manager: MockerFixture,
+) -> None:
+    """filtersのtypeが未知の場合にsuccess=Falseが返る."""
+    result = run_analyze_chakudo(mock_manager, filters=[{"type": "unknown"}])
+
+    assert result["success"] is False
+    assert "error" in result
+
+
+def test_run_analyze_chakudo_returns_error_for_unknown_group_by_kind(
+    mock_manager: MockerFixture,
+) -> None:
+    """group_byのkindが未知の場合にsuccess=Falseが返る."""
+    result = run_analyze_chakudo(mock_manager, group_by={"kind": "unknown"})
+
+    assert result["success"] is False
+    assert "error" in result
