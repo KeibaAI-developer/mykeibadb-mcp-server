@@ -189,17 +189,3 @@ def analyze_chokyo_debut_seiseki(
     return _analyze_chokyo_debut_seiseki(
         manager, debut_date_from, debut_date_to, condition=condition
     )
-
-
-def _fmt_time4(val: str) -> str | None:
-    """4桁タイム文字列（0.1秒単位）を秒表記に変換する。センチネル値はNoneを返す。"""
-    if not val or val in ("0000", "9999"):
-        return None
-    return f"{int(val) / 10:.1f}秒"
-
-
-def _fmt_lap3(val: str) -> str | None:
-    """3桁ラップタイム文字列（0.1秒単位）を秒表記に変換する。センチネル値はNoneを返す。"""
-    if not val or val in ("000", "999"):
-        return None
-    return f"{int(val) / 10:.1f}秒"
