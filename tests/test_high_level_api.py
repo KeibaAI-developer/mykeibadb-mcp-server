@@ -6,13 +6,9 @@ from pytest_mock import MockerFixture
 
 from mykeibadb_mcp_server.high_level_api import (
     analyze_chokyo_debut_seiseki,
-    analyze_kishu_seiseki,
-    analyze_ninki_seiseki,
-    analyze_race_chakudo,
-    analyze_sire_seiseki,
-    analyze_waku_seiseki,
     get_uma_chokyo,
     get_uma_rekisen,
+    run_analyze_chakudo,
 )
 
 
@@ -53,138 +49,6 @@ def _make_tally_df(
         "tansho_payout_sum": [tansho_payout_sum],
         "fukusho_payout_sum": [fukusho_payout_sum],
     })
-
-
-def _make_tally_multi_df() -> pd.DataFrame:
-    """複数行の tally_chakujun モック."""
-    return pd.DataFrame({
-        "group_label": ["1人気", "2人気", "3人気"],
-        "total": [100, 100, 100],
-        "wins": [30, 20, 15],
-        "second": [20, 25, 20],
-        "third": [15, 18, 22],
-        "chakugai": [35, 37, 43],
-        "tansho_payout_sum": [8500, 9000, 9500],
-        "fukusho_payout_sum": [7800, 8200, 8000],
-    })
-
-
-def _make_tally_waku_df() -> pd.DataFrame:
-    """枠番用の tally_chakujun モック."""
-    return pd.DataFrame({
-        "group_label": ["1", "2", "3"],
-        "total": [100, 120, 110],
-        "wins": [10, 15, 12],
-        "second": [12, 18, 14],
-        "third": [15, 20, 16],
-        "chakugai": [63, 67, 68],
-        "tansho_payout_sum": [8000, 9000, 8500],
-        "fukusho_payout_sum": [7500, 8500, 7800],
-    })
-
-
-# 正常系: analyze_ninki_seiseki
-
-
-def test_analyze_ninki_seiseki_returns_success(mock_manager: MockerFixture) -> None:
-    """analyze_ninki_seisekiがsuccess=Trueを返す."""
-    mock_manager.fetch_dataframe.side_effect = [
-        _make_entry_df(group_label="1"),
-        _make_tally_df(group_label="1", total=100, wins=20),
-    ]
-
-    result = analyze_ninki_seiseki(mock_manager, ninki=1)
-
-    assert result["success"] is True
-    assert result["count"] == 1
-    row = result["results"][0]
-    assert row["total"] == 100
-    assert row["wins"] == 20
-    assert row["win_rate"] == 20.0
-
-
-def test_analyze_ninki_seiseki_with_filters(mock_manager: MockerFixture) -> None:
-    """フィルタパラメータが指定可能."""
-    mock_manager.fetch_dataframe.side_effect = [
-        _make_entry_df(group_label="2"),
-        _make_tally_df(group_label="2", total=50),
-    ]
-
-    result = analyze_ninki_seiseki(
-        mock_manager, ninki=2, keibajo="05", grade="A", year_from="2020", kyori=2000
-    )
-
-    assert result["success"] is True
-    assert result["count"] == 1
-    assert result["results"][0]["total"] == 50
-
-
-def test_analyze_ninki_seiseki_no_matching_rows(mock_manager: MockerFixture) -> None:
-    """指定人気に該当する行がないときcount=0が返る."""
-    mock_manager.fetch_dataframe.side_effect = [
-        _make_entry_df(group_label="2"),
-        _make_tally_df(group_label="2"),
-    ]
-
-    result = analyze_ninki_seiseki(mock_manager, ninki=1)
-
-    assert result["success"] is True
-    assert result["count"] == 0
-    assert result["results"] == []
-
-
-# 正常系: analyze_kishu_seiseki
-
-
-def test_analyze_kishu_seiseki_returns_success(mock_manager: MockerFixture) -> None:
-    """analyze_kishu_seisekiがsuccess=Trueを返す."""
-    mock_manager.fetch_dataframe.side_effect = [
-        _make_entry_df(group_label="武豊"),
-        _make_tally_df(group_label="武豊", total=500, wins=100, tansho_payout_sum=10000),
-    ]
-
-    result = analyze_kishu_seiseki(mock_manager, kishu_name="武豊")
-
-    assert result["success"] is True
-    assert result["count"] == 1
-    row = result["results"][0]
-    assert row["group"] == "武豊"
-    assert row["win_rate"] == 20.0
-
-
-def test_analyze_kishu_seiseki_empty_result(mock_manager: MockerFixture) -> None:
-    """マッチなし時にcountが0."""
-    mock_manager.fetch_dataframe.side_effect = [
-        pd.DataFrame(columns=["ketto_toroku_bango", "race_code", "umaban", "group_label"]),
-        pd.DataFrame(columns=[
-            "group_label", "total", "wins", "second", "third",
-            "chakugai", "tansho_payout_sum", "fukusho_payout_sum",
-        ]),
-    ]
-
-    result = analyze_kishu_seiseki(mock_manager, kishu_name="存在しない騎手")
-
-    assert result["success"] is True
-    assert result["count"] == 0
-
-
-# 正常系: analyze_sire_seiseki
-
-
-def test_analyze_sire_seiseki_returns_success(mock_manager: MockerFixture) -> None:
-    """analyze_sire_seisekiがsuccess=Trueを返す."""
-    mock_manager.fetch_dataframe.side_effect = [
-        _make_entry_df(group_label="ディープインパクト"),
-        _make_tally_df(group_label="ディープインパクト", total=1000, wins=200),
-    ]
-
-    result = analyze_sire_seiseki(mock_manager, sire_name="ディープインパクト")
-
-    assert result["success"] is True
-    assert result["count"] == 1
-    row = result["results"][0]
-    assert row["group"] == "ディープインパクト"
-    assert row["win_rate"] == 20.0
 
 
 # 正常系: get_uma_rekisen
@@ -235,115 +99,7 @@ def test_get_uma_rekisen_with_year_from(mock_manager: MockerFixture) -> None:
     assert result["count"] == 0
 
 
-# 正常系: analyze_waku_seiseki
-
-
-def test_analyze_waku_seiseki_returns_success(mock_manager: MockerFixture) -> None:
-    """analyze_waku_seisekiがsuccess=Trueを返す."""
-    mock_manager.fetch_dataframe.side_effect = [
-        pd.DataFrame({
-            "ketto_toroku_bango": ["001", "002", "003"],
-            "race_code": ["r1", "r2", "r3"],
-            "umaban": ["01", "02", "03"],
-            "group_label": ["1", "2", "3"],
-        }),
-        _make_tally_waku_df(),
-    ]
-
-    result = analyze_waku_seiseki(mock_manager)
-
-    assert result["success"] is True
-    assert result["count"] == 3
-
-
-def test_analyze_waku_seiseki_with_filters(mock_manager: MockerFixture) -> None:
-    """フィルタパラメータが指定可能."""
-    mock_manager.fetch_dataframe.side_effect = [
-        _make_entry_df(group_label="1"),
-        _make_tally_df(group_label="1", total=50, wins=8),
-    ]
-
-    result = analyze_waku_seiseki(mock_manager, keibajo="05", kyori=2000, year_from="2020")
-
-    assert result["success"] is True
-    assert result["results"][0]["wins"] == 8
-
-
-# 正常系: course_kubun / week_in_course フィルタ
-
-
-def test_analyze_waku_seiseki_with_course_week_filter(mock_manager: MockerFixture) -> None:
-    """course_kubunとweek_in_courseを指定するとCTEフィルタが適用される."""
-    mock_manager.fetch_dataframe.side_effect = [
-        _make_entry_df(group_label="1"),
-        _make_tally_df(group_label="1", total=30, wins=6),
-    ]
-
-    result = analyze_waku_seiseki(
-        mock_manager, keibajo="05", kyori=1600, year_from="2021",
-        course_kubun="C", week_in_course=2,
-    )
-
-    assert result["success"] is True
-    assert result["count"] == 1
-    assert result["results"][0]["wins"] == 6
-
-    entry_call = mock_manager.fetch_dataframe.call_args_list[0]
-    sql = entry_call[0][0]
-    params = entry_call[1]["params"]
-    assert "cw_target" in sql
-    assert "C" in params
-    assert 2 in params
-
-
-def test_analyze_ninki_seiseki_with_course_week_filter(mock_manager: MockerFixture) -> None:
-    """course_kubunとweek_in_courseを指定するとCTEフィルタが適用される."""
-    mock_manager.fetch_dataframe.side_effect = [
-        _make_entry_df(group_label="1"),
-        _make_tally_df(group_label="1", total=80, wins=16),
-    ]
-
-    result = analyze_ninki_seiseki(
-        mock_manager, ninki=1, keibajo="05", course_kubun="C", week_in_course=2
-    )
-
-    assert result["success"] is True
-    assert result["count"] == 1
-    assert result["results"][0]["wins"] == 16
-
-    entry_call = mock_manager.fetch_dataframe.call_args_list[0]
-    sql = entry_call[0][0]
-    params = entry_call[1]["params"]
-    assert "cw_target" in sql
-    assert "C" in params
-    assert 2 in params
-
-
-# 準正常系: DBエラー
-
-
-def test_analyze_ninki_seiseki_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
-    """DBエラー時にsuccess=Falseが返る."""
-    from mykeibadb.exceptions import QueryExecutionError
-
-    mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
-
-    result = analyze_ninki_seiseki(mock_manager)
-
-    assert result["success"] is False
-    assert "error" in result
-
-
-def test_analyze_kishu_seiseki_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
-    """DBエラー時にsuccess=Falseが返る."""
-    from mykeibadb.exceptions import QueryExecutionError
-
-    mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
-
-    result = analyze_kishu_seiseki(mock_manager, kishu_name="武豊")
-
-    assert result["success"] is False
-    assert "error" in result
+# 準正常系: get_uma_rekisen
 
 
 def test_get_uma_rekisen_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
@@ -353,30 +109,6 @@ def test_get_uma_rekisen_returns_error_on_db_failure(mock_manager: MockerFixture
     mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
 
     result = get_uma_rekisen(mock_manager, uma_name="テスト馬")
-
-    assert result["success"] is False
-    assert "error" in result
-
-
-def test_analyze_sire_seiseki_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
-    """DBエラー時にsuccess=Falseが返る."""
-    from mykeibadb.exceptions import QueryExecutionError
-
-    mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
-
-    result = analyze_sire_seiseki(mock_manager, sire_name="ディープインパクト")
-
-    assert result["success"] is False
-    assert "error" in result
-
-
-def test_analyze_waku_seiseki_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
-    """DBエラー時にsuccess=Falseが返る."""
-    from mykeibadb.exceptions import QueryExecutionError
-
-    mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
-
-    result = analyze_waku_seiseki(mock_manager)
 
     assert result["success"] is False
     assert "error" in result
@@ -614,138 +346,99 @@ def test_analyze_chokyo_debut_seiseki_returns_error_on_db_failure(
     assert "error" in result
 
 
-# 正常系: analyze_race_chakudo
+# 正常系: run_analyze_chakudo
 
 
-def test_analyze_race_chakudo_returns_success(mock_manager: MockerFixture) -> None:
-    """基本的な集計でsuccess=Trueを返す."""
+def test_run_analyze_chakudo_returns_success(mock_manager: MockerFixture) -> None:
+    """filters/condition/group_byなしでもsuccess=Trueを返す."""
     mock_manager.fetch_dataframe.side_effect = [
-        pd.DataFrame({
-            "ketto_toroku_bango": ["001", "002", "003"],
-            "race_code": ["r1", "r2", "r3"],
-            "umaban": ["01", "02", "03"],
-            "group_label": ["1人気", "2人気", "3人気"],
-        }),
-        _make_tally_multi_df(),
+        _make_entry_df(group_label="1"),
+        _make_tally_df(group_label="1", total=100, wins=20),
     ]
 
-    result = analyze_race_chakudo(mock_manager, column="u.tansho_ninkijun")
+    result = run_analyze_chakudo(mock_manager)
 
     assert result["success"] is True
-    assert result["count"] == 3
+    assert result["count"] == 1
     row = result["results"][0]
-    assert row["group"] == "1人気"
     assert row["total"] == 100
-    assert row["wins"] == 30
-    assert row["win_rate"] == 30.0
-    assert row["tansho_kaishuu"] == 85.0
-    assert row["fukusho_kaishuu"] == 78.0
+    assert row["wins"] == 20
+    assert row["win_rate"] == 20.0
 
 
-def test_analyze_race_chakudo_with_filters(mock_manager: MockerFixture) -> None:
-    """フィルタ条件がSQLのWHERE句に反映される."""
+def test_run_analyze_chakudo_with_multiple_filters(mock_manager: MockerFixture) -> None:
+    """複数filters指定時にAND（INTERSECT）でエントリが絞り込まれる."""
     mock_manager.fetch_dataframe.side_effect = [
-        pd.DataFrame({
-            "ketto_toroku_bango": ["001"],
-            "race_code": ["r1"],
-            "umaban": ["01"],
-            "group_label": ["1人気"],
-        }),
-        _make_tally_df(group_label="1人気"),
+        _make_entry_df(group_label="1"),
+        _make_tally_df(group_label="1", total=50, wins=10),
     ]
 
-    analyze_race_chakudo(
+    result = run_analyze_chakudo(
         mock_manager,
-        column="u.tansho_ninkijun",
-        year_from="2016",
-        year_to="2025",
+        filters=[
+            {"type": "race_col", "column": "u.wakuban", "values": ["1"]},
+            {"type": "subject", "subject": "kishu", "name": "武豊"},
+        ],
+        condition={"keibajo_codes": ["05"], "year_from": "2020"},
+        group_by={"kind": "race_col", "column": "u.tansho_ninkijun"},
     )
-
-    entry_call = mock_manager.fetch_dataframe.call_args_list[0]
-    sql = entry_call[0][0]
-    params = entry_call[1]["params"]
-    assert "kaisai_nen >= %s" in sql
-    assert "kaisai_nen <= %s" in sql
-    assert "2016" in params
-    assert "2025" in params
-
-
-def test_analyze_race_chakudo_empty_result(mock_manager: MockerFixture) -> None:
-    """空結果でcount=0を返す."""
-    mock_manager.fetch_dataframe.side_effect = [
-        pd.DataFrame(columns=["ketto_toroku_bango", "race_code", "umaban", "group_label"]),
-        pd.DataFrame(columns=[
-            "group_label", "total", "wins", "second", "third",
-            "chakugai", "tansho_payout_sum", "fukusho_payout_sum",
-        ]),
-    ]
-
-    result = analyze_race_chakudo(mock_manager, column="u.tansho_ninkijun")
 
     assert result["success"] is True
-    assert result["count"] == 0
-    assert result["results"] == []
-
-
-def test_analyze_race_chakudo_keibajo_in_where_without_cw(mock_manager: MockerFixture) -> None:
-    """course_kubunなし時はkeibajoがWHERE句に入る."""
-    mock_manager.fetch_dataframe.side_effect = [
-        pd.DataFrame({
-            "ketto_toroku_bango": ["001"],
-            "race_code": ["r1"],
-            "umaban": ["01"],
-            "group_label": ["05"],
-        }),
-        _make_tally_df(group_label="05"),
-    ]
-
-    analyze_race_chakudo(mock_manager, column="r.keibajo_code", keibajo="05")
+    assert result["count"] == 1
 
     entry_call = mock_manager.fetch_dataframe.call_args_list[0]
     sql = entry_call[0][0]
-    params = entry_call[1]["params"]
-    assert "keibajo_code = %s" in sql
-    assert "05" in params
+    assert "INTERSECT" in sql
 
 
-def test_analyze_race_chakudo_with_course_week_filter(mock_manager: MockerFixture) -> None:
-    """course_kubun+week_in_course指定時にcw_targetがSQLに含まれkeibajoはCTE側で処理される."""
+def test_run_analyze_chakudo_history_group_by(mock_manager: MockerFixture) -> None:
+    """history group_byでAttrSource由来のグループ別集計が行われる."""
     mock_manager.fetch_dataframe.side_effect = [
-        pd.DataFrame({
-            "ketto_toroku_bango": ["001"],
-            "race_code": ["r1"],
-            "umaban": ["01"],
-            "group_label": ["1"],
-        }),
-        _make_tally_df(group_label="1"),
+        _make_entry_df(group_label="東京"),
+        _make_tally_df(group_label="東京", total=30, wins=5),
     ]
 
-    analyze_race_chakudo(
+    result = run_analyze_chakudo(
         mock_manager,
-        column="u.tansho_ninkijun",
-        keibajo="05",
-        course_kubun="C",
-        week_in_course=1,
+        group_by={"kind": "history", "source": {"type": "debut_venue"}},
     )
 
-    entry_call = mock_manager.fetch_dataframe.call_args_list[0]
-    sql = entry_call[0][0]
-    params = entry_call[1]["params"]
-    assert "cw_target" in sql
-    assert "05" in params
-    assert "r.keibajo_code = %s" not in sql
+    assert result["success"] is True
+    assert result["count"] == 1
+    assert result["results"][0]["group"] == "東京"
 
 
-# 準正常系: analyze_race_chakudo
+def test_run_analyze_chakudo_fixed_group_by(mock_manager: MockerFixture) -> None:
+    """fixed group_byでrowsに定義したラベル別の集計が行われる."""
+    mock_manager.fetch_dataframe.side_effect = [
+        _make_entry_df(group_label="初出走"),
+        _make_tally_df(group_label="初出走", total=10, wins=1),
+    ]
+
+    result = run_analyze_chakudo(
+        mock_manager,
+        group_by={
+            "kind": "fixed",
+            "source": {"type": "career_count"},
+            "rows": {"初出走": 0, "経験馬": [1, 9999]},
+        },
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 1
+    assert result["results"][0]["group"] == "初出走"
 
 
-def test_analyze_race_chakudo_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
+# 準正常系: run_analyze_chakudo
+
+
+def test_run_analyze_chakudo_returns_error_on_db_failure(mock_manager: MockerFixture) -> None:
     """DBエラー時にsuccess=Falseが返る."""
     from mykeibadb.exceptions import QueryExecutionError
 
     mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
 
-    result = analyze_race_chakudo(mock_manager, column="u.tansho_ninkijun")
+    result = run_analyze_chakudo(mock_manager)
 
     assert result["success"] is False
     assert "error" in result
