@@ -4,7 +4,7 @@ import pandas as pd
 from mykeibadb.exceptions import QueryExecutionError
 from pytest_mock import MockerFixture
 
-from mykeibadb_mcp_server.server import execute_query, get_table_data
+from mykeibadb_mcp_server.server import execute_query, get_table_data, tool_analyze_chakudo
 
 # 正常系: execute_query
 
@@ -123,3 +123,58 @@ def test_get_table_data_with_date_range_uses_period_method(mocker: MockerFixture
 
     assert result["success"] is True
     mock_accessor.get_table_data_with_period.assert_called_once()
+
+
+# 正常系: tool_analyze_chakudo
+
+
+def test_tool_analyze_chakudo_returns_success(mocker: MockerFixture) -> None:
+    """filters/condition/group_byのJSONからグループ別着度数集計が返される."""
+    mock_manager = mocker.MagicMock()
+    mock_manager.fetch_dataframe.side_effect = [
+        pd.DataFrame({
+            "ketto_toroku_bango": ["2020100001"],
+            "race_code": ["202001050101"],
+            "umaban": ["01"],
+            "group_label": ["1"],
+        }),
+        pd.DataFrame({
+            "group_label": ["1"],
+            "total": [100],
+            "wins": [20],
+            "second": [15],
+            "third": [12],
+            "chakugai": [53],
+            "tansho_payout_sum": [8500],
+            "fukusho_payout_sum": [7800],
+        }),
+    ]
+    mocker.patch("mykeibadb_mcp_server.server._get_connection_manager", return_value=mock_manager)
+
+    result = tool_analyze_chakudo(
+        filters=[{"type": "subject", "subject": "kishu", "name": "武豊"}],
+        condition={"keibajo_codes": ["05"], "year_from": "2020"},
+        group_by={"kind": "race_col", "column": "u.wakuban"},
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 1
+    row = result["results"][0]
+    assert row["total"] == 100
+    assert row["wins"] == 20
+    assert row["win_rate"] == 20.0
+
+
+# 準正常系: tool_analyze_chakudo
+
+
+def test_tool_analyze_chakudo_returns_error_on_db_failure(mocker: MockerFixture) -> None:
+    """DBエラー時にsuccess=Falseが返る."""
+    mock_manager = mocker.MagicMock()
+    mock_manager.fetch_dataframe.side_effect = QueryExecutionError("接続失敗")
+    mocker.patch("mykeibadb_mcp_server.server._get_connection_manager", return_value=mock_manager)
+
+    result = tool_analyze_chakudo()
+
+    assert result["success"] is False
+    assert "error" in result

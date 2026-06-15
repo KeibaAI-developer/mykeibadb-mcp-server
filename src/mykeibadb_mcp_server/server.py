@@ -28,13 +28,9 @@ from mykeibadb.tables import TableAccessor
 from mykeibadb_mcp_server.guard import validate_select_only
 from mykeibadb_mcp_server.high_level_api import (
     analyze_chokyo_debut_seiseki,
-    analyze_kishu_seiseki,
-    analyze_ninki_seiseki,
-    analyze_race_chakudo,
-    analyze_sire_seiseki,
-    analyze_waku_seiseki,
     get_uma_chokyo,
     get_uma_rekisen,
+    run_analyze_chakudo,
 )
 from mykeibadb_mcp_server.schema.code_descriptions import (
     BABAJOTAI_CODE,
@@ -63,21 +59,6 @@ _CODE_CONVERTERS: dict[str, Callable[[str], str]] = {
 }
 
 _MAX_QUERY_ROWS = 200
-
-_CHAKUDO_GROUP_SPECS: dict[str, str] = {
-    "ninki_range": "u.tansho_ninkijun",
-    "ninki": "u.tansho_ninkijun",
-    "waku": "u.wakuban",
-    "keibajo": "r.keibajo_code",
-}
-
-_NINKI_RANGE_GROUPS: list[tuple[str, set[str]]] = [
-    ("1人気", {"1"}),
-    ("2人気", {"2"}),
-    ("3人気", {"3"}),
-    ("4-6人気", {"4", "5", "6"}),
-    ("7-9人気", {"7", "8", "9"}),
-]
 
 
 @mcp.tool()
@@ -454,92 +435,6 @@ def query_examples_resource() -> str:
 
 
 @mcp.tool()
-def tool_analyze_ninki_seiseki(
-    ninki: int = 1,
-    keibajo: str | None = None,
-    grade: str | None = None,
-    year_from: str | None = None,
-    kyori: int | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
-) -> dict[str, Any]:
-    """指定人気順位の勝率・複勝率・出走数・勝利数を集計する。
-
-    Args:
-        ninki (int): 人気順位（デフォルト1）
-        keibajo (str | None): 競馬場コード（例: '05'=東京）
-        grade (str | None): グレードコード（例: 'A'=GI）
-        year_from (str | None): 集計開始年（4桁文字列、例: '2020'）
-        kyori (int | None): 距離（メートル単位）
-        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
-        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
-
-    Returns:
-        dict: 出走数・勝利数・勝率・複勝数・複勝率を含む辞書
-    """
-    return analyze_ninki_seiseki(
-        _get_connection_manager(), ninki, keibajo, grade, year_from, kyori,
-        course_kubun, week_in_course,
-    )
-
-
-@mcp.tool()
-def tool_analyze_kishu_seiseki(
-    kishu_name: str,
-    keibajo: str | None = None,
-    year_from: str | None = None,
-    kyori: int | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
-) -> dict[str, Any]:
-    """騎手名（部分一致）で勝率・複勝率・騎乗数を集計する。
-
-    Args:
-        kishu_name (str): 騎手名（部分一致で検索）
-        keibajo (str | None): 競馬場コード
-        year_from (str | None): 集計開始年
-        kyori (int | None): 距離（メートル）
-        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
-        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
-
-    Returns:
-        dict: 騎手名・騎乗数・勝利数・勝率・複勝率を含む辞書
-    """
-    return analyze_kishu_seiseki(
-        _get_connection_manager(), kishu_name, keibajo, year_from, kyori,
-        course_kubun, week_in_course,
-    )
-
-
-@mcp.tool()
-def tool_analyze_sire_seiseki(
-    sire_name: str,
-    keibajo: str | None = None,
-    kyori: int | None = None,
-    year_from: str | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
-) -> dict[str, Any]:
-    """種牡馬（父馬）名で産駒の勝率・複勝率を集計する。
-
-    Args:
-        sire_name (str): 種牡馬名（部分一致で検索）
-        keibajo (str | None): 競馬場コード
-        kyori (int | None): 距離（メートル）
-        year_from (str | None): 集計開始年
-        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
-        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
-
-    Returns:
-        dict: 種牡馬名・産駒出走数・勝利数・勝率・複勝率を含む辞書
-    """
-    return analyze_sire_seiseki(
-        _get_connection_manager(), sire_name, keibajo, kyori, year_from,
-        course_kubun, week_in_course,
-    )
-
-
-@mcp.tool()
 def tool_get_uma_rekisen(
     uma_name: str,
     year_from: str | None = None,
@@ -559,31 +454,6 @@ def tool_get_uma_rekisen(
     """
     return get_uma_rekisen(
         _get_connection_manager(), uma_name, year_from, course_kubun, week_in_course
-    )
-
-
-@mcp.tool()
-def tool_analyze_waku_seiseki(
-    keibajo: str | None = None,
-    kyori: int | None = None,
-    year_from: str | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
-) -> dict[str, Any]:
-    """枠番（1〜8）別の勝率・複勝率を集計する。
-
-    Args:
-        keibajo (str | None): 競馬場コード
-        kyori (int | None): 距離（メートル）
-        year_from (str | None): 集計開始年
-        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
-        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
-
-    Returns:
-        dict: 枠番ごとの出走数・勝利数・勝率・複勝率を含む辞書
-    """
-    return analyze_waku_seiseki(
-        _get_connection_manager(), keibajo, kyori, year_from, course_kubun, week_in_course
     )
 
 
@@ -644,121 +514,39 @@ def tool_analyze_chokyo_debut_seiseki(
 
 
 @mcp.tool()
-def tool_analyze_race_chakudo(
-    group_by: str,
-    race_name: str | None = None,
-    keibajo: str | None = None,
-    kyori: int | None = None,
-    year_from: str | None = None,
-    year_to: str | None = None,
-    grade: str | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
+def tool_analyze_chakudo(
+    filters: list[dict[str, Any]] | None = None,
+    condition: dict[str, Any] | None = None,
+    group_by: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """レース結果を指定グループ別に着度数・勝率・複勝率・回収率で集計する。
+    """馬×レースを条件で絞り込み、指定軸でグループ別の着度数・勝率・複勝率・回収率を集計する。
 
     Args:
-        group_by (str): グループ化種別。ninki_range/ninki/waku/keibajo のいずれか
-        race_name (str | None): レース名（部分一致）
-        keibajo (str | None): 競馬場コード
-        kyori (int | None): 距離（メートル）
-        year_from (str | None): 集計開始年（4桁文字列）
-        year_to (str | None): 集計終了年（4桁文字列）
-        grade (str | None): グレードコード
-        course_kubun (str | None): コース区分（week_in_courseと共に指定）
-        week_in_course (int | None): コース使用開始からの週番号（course_kubunと共に指定）
+        filters (list[dict[str, Any]] | None): エントリフィルタの配列。各要素は type で種別を指定:
+            - {"type": "race_col", "column": "u.wakuban", "values": [...],
+              "min_value": int, "max_value": int}
+            - {"type": "subject", "subject": "kishu"|"sire"|..., "name": str, "code": str}
+            - {"type": "history", "source": {...AttrSource...}, "cond": [min, max] | int | str}
+            - {"type": "chokyo", "condition": [{"course", "metric", "furlong",
+              "max_value", "min_value", "tracen_kubun"}, ...]}
+            複数指定するとAND（INTERSECT）で絞り込む。
+            columnにはu.*/r.*等の信頼済み列参照のみを渡すこと（任意の値域・関数式は不可）。
+        condition (dict[str, Any] | None): レース絞り込み条件（RaceCondition相当のdict）。
+            keibajo_codes / grade_code / year_from / year_to / kyori /
+            course_kubun + week_in_course など。
+        group_by (dict[str, Any] | None): グループ分け軸。
+            - {"kind": "race_col", "column": "u.wakuban"}
+            - {"kind": "subject", "subject": "kishu"}
+            - {"kind": "history", "source": {...AttrSource...}}
+            - {"kind": "fixed", "source": {...}, "rows": {"ラベル": [min,max] | int | str, ...}}
+            columnにはu.*/r.*等の信頼済み列参照のみを渡すこと（任意の値域・関数式は不可）。
 
     Returns:
-        dict: グループ別の着度数・勝率・複勝率・回収率を含む辞書
+        dict: success / count / results。results各行は
+              group / total / wins / second / third / chakugai /
+              win_rate / fukusho_rate / tansho_kaishuu / fukusho_kaishuu。
     """
-    supported = list(_CHAKUDO_GROUP_SPECS.keys())
-    if group_by not in _CHAKUDO_GROUP_SPECS:
-        return {"success": False, "error": f"group_byは {supported} のいずれかを指定してください"}
-    column = _CHAKUDO_GROUP_SPECS[group_by]
-    result = analyze_race_chakudo(
-        _get_connection_manager(),
-        column,
-        keibajo=keibajo,
-        kyori=kyori,
-        year_from=year_from,
-        year_to=year_to,
-        grade=grade,
-        course_kubun=course_kubun,
-        week_in_course=week_in_course,
-    )
-    if group_by != "ninki_range" or not result.get("success"):
-        return result
-    return _merge_ninki_range(result)
-
-
-def _merge_ninki_range(result: dict[str, Any]) -> dict[str, Any]:
-    """ninki_range グループを後処理でマージする。
-
-    analyze_chakudo はゼロ埋め人気順位（"01"〜"18"等）をそのまま返すため、
-    1人気〜10人気以下の6グループに集約する。
-
-    Args:
-        result (dict[str, Any]): analyze_race_chakudo の成功レスポンス
-
-    Returns:
-        dict[str, Any]: グループマージ済みのレスポンス
-    """
-    raw: dict[str, dict[str, Any]] = {
-        (str(int(r["group"])) if r["group"].isdigit() else r["group"]): r
-        for r in result["results"]
-    }
-
-    merged_rows: list[dict[str, Any]] = []
-    for label, grp_set in _NINKI_RANGE_GROUPS:
-        members = [raw[k] for k in grp_set if k in raw]
-        if not members:
-            continue
-        total = sum(m["total"] for m in members)
-        wins = sum(m["wins"] for m in members)
-        second = sum(m["second"] for m in members)
-        third = sum(m["third"] for m in members)
-        chakugai = sum(m["chakugai"] for m in members)
-        tansho_w = sum(m["total"] * m["tansho_kaishuu"] for m in members)
-        fukusho_w = sum(m["total"] * m["fukusho_kaishuu"] for m in members)
-        merged_rows.append({
-            "group": label,
-            "total": total,
-            "wins": wins,
-            "second": second,
-            "third": third,
-            "chakugai": chakugai,
-            "win_rate": round(wins * 100.0 / total, 1) if total else 0.0,
-            "fukusho_rate": round((wins + second + third) * 100.0 / total, 1) if total else 0.0,
-            "tansho_kaishuu": round(tansho_w / total, 1) if total else 0.0,
-            "fukusho_kaishuu": round(fukusho_w / total, 1) if total else 0.0,
-        })
-
-    juninki_ika = [
-        r for r in result["results"]
-        if r.get("group", "").isdigit() and int(r["group"]) >= 10
-    ]
-    if juninki_ika:
-        total = sum(m["total"] for m in juninki_ika)
-        wins = sum(m["wins"] for m in juninki_ika)
-        second = sum(m["second"] for m in juninki_ika)
-        third = sum(m["third"] for m in juninki_ika)
-        chakugai = sum(m["chakugai"] for m in juninki_ika)
-        tansho_w = sum(m["total"] * m["tansho_kaishuu"] for m in juninki_ika)
-        fukusho_w = sum(m["total"] * m["fukusho_kaishuu"] for m in juninki_ika)
-        merged_rows.append({
-            "group": "10人気以下",
-            "total": total,
-            "wins": wins,
-            "second": second,
-            "third": third,
-            "chakugai": chakugai,
-            "win_rate": round(wins * 100.0 / total, 1) if total else 0.0,
-            "fukusho_rate": round((wins + second + third) * 100.0 / total, 1) if total else 0.0,
-            "tansho_kaishuu": round(tansho_w / total, 1) if total else 0.0,
-            "fukusho_kaishuu": round(fukusho_w / total, 1) if total else 0.0,
-        })
-
-    return {"success": True, "count": len(merged_rows), "results": merged_rows}
+    return run_analyze_chakudo(_get_connection_manager(), filters, condition, group_by)
 
 
 def _get_connection_manager() -> ConnectionManager:

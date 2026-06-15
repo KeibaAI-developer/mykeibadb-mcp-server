@@ -8,143 +8,42 @@ from mykeibadb.analytics import (
     ChokyoThreshold,
     GroupBy,
     RaceCondition,
-    Subject,
-    SubjectFilter,
     analyze_chakudo,
-    analyze_chokyo_debut_seiseki as _analyze_chokyo_debut_seiseki,
-    get_uma_chokyo as _get_uma_chokyo,
-    get_uma_rekisen as _get_uma_rekisen,
 )
+from mykeibadb.analytics import analyze_chokyo_debut_seiseki as _analyze_chokyo_debut_seiseki
+from mykeibadb.analytics import (
+    build_entry_filter,
+)
+from mykeibadb.analytics import get_uma_chokyo as _get_uma_chokyo
+from mykeibadb.analytics import get_uma_rekisen as _get_uma_rekisen
 from mykeibadb.connection import ConnectionManager
 
 
-def analyze_ninki_seiseki(
+def run_analyze_chakudo(
     manager: ConnectionManager,
-    ninki: int = 1,
-    keibajo: str | None = None,
-    grade: str | None = None,
-    year_from: str | None = None,
-    kyori: int | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
+    filters: list[dict[str, Any]] | None = None,
+    condition: dict[str, Any] | None = None,
+    group_by: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """指定人気順位の勝率・複勝率・出走数・勝利数を集計する。
+    """JSON引数をdataclassに変換しanalyze_chakudoを実行する。
 
     Args:
         manager (ConnectionManager): DBコネクションマネージャ
-        ninki (int): 人気順位（デフォルト1）
-        keibajo (str | None): 競馬場コード（例: '05'=東京）
-        grade (str | None): グレードコード（例: 'A'=GI）
-        year_from (str | None): 集計開始年（4桁文字列、例: '2020'）
-        kyori (int | None): 距離（メートル単位）
-        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
-        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
+        filters (list[dict[str, Any]] | None): EntryFilter相当のdictリスト
+        condition (dict[str, Any] | None): RaceCondition相当のdict
+        group_by (dict[str, Any] | None): GroupBy相当のdict
 
     Returns:
-        dict: 出走数・勝利数・勝率・複勝数・複勝率を含む辞書
+        dict: success / count / results（ChakudoRowのasdictリスト）。
+              失敗時はsuccess=False / error。
     """
-    condition = RaceCondition(
-        keibajo_code=keibajo,
-        grade_code=grade,
-        year_from=year_from,
-        kyori=kyori,
-        course_kubun=course_kubun,
-        week_in_course=week_in_course,
-    )
-    result = analyze_chakudo(
-        manager, [], condition, GroupBy(kind="race_col", column="u.tansho_ninkijun")
-    )
-    if not result.success:
-        return {"success": False, "error": result.error}
-    ninki_rows = [r for r in result.rows if int(r.group) == ninki]
-    return {
-        "success": True,
-        "count": len(ninki_rows),
-        "results": [asdict(row) for row in ninki_rows],
-    }
-
-
-def analyze_kishu_seiseki(
-    manager: ConnectionManager,
-    kishu_name: str,
-    keibajo: str | None = None,
-    year_from: str | None = None,
-    kyori: int | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
-) -> dict[str, Any]:
-    """騎手名（部分一致）で勝率・複勝率・騎乗数を集計する。
-
-    Args:
-        manager (ConnectionManager): DBコネクションマネージャ
-        kishu_name (str): 騎手名（部分一致で検索）
-        keibajo (str | None): 競馬場コード
-        year_from (str | None): 集計開始年
-        kyori (int | None): 距離（メートル）
-        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
-        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
-
-    Returns:
-        dict: 騎手名・騎乗数・勝利数・勝率・複勝率を含む辞書
-    """
-    condition = RaceCondition(
-        keibajo_code=keibajo,
-        year_from=year_from,
-        kyori=kyori,
-        course_kubun=course_kubun,
-        week_in_course=week_in_course,
-    )
-    result = analyze_chakudo(
-        manager,
-        [SubjectFilter(subject=Subject.KISHU, name=kishu_name)],
-        condition,
-        GroupBy(kind="subject", subject=Subject.KISHU),
-    )
-    if not result.success:
-        return {"success": False, "error": result.error}
-    return {
-        "success": True,
-        "count": len(result.rows),
-        "results": [asdict(row) for row in result.rows],
-    }
-
-
-def analyze_sire_seiseki(
-    manager: ConnectionManager,
-    sire_name: str,
-    keibajo: str | None = None,
-    kyori: int | None = None,
-    year_from: str | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
-) -> dict[str, Any]:
-    """種牡馬（父馬）名で産駒の勝率・複勝率を集計する。
-
-    Args:
-        manager (ConnectionManager): DBコネクションマネージャ
-        sire_name (str): 種牡馬名（部分一致で検索）
-        keibajo (str | None): 競馬場コード
-        kyori (int | None): 距離（メートル）
-        year_from (str | None): 集計開始年
-        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
-        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
-
-    Returns:
-        dict: 種牡馬名・産駒出走数・勝利数・勝率・複勝率を含む辞書
-    """
-    condition = RaceCondition(
-        keibajo_code=keibajo,
-        kyori=kyori,
-        year_from=year_from,
-        course_kubun=course_kubun,
-        week_in_course=week_in_course,
-    )
-    result = analyze_chakudo(
-        manager,
-        [SubjectFilter(subject=Subject.SIRE, name=sire_name)],
-        condition,
-        GroupBy(kind="subject", subject=Subject.SIRE),
-    )
+    try:
+        entry_filters = [build_entry_filter(f) for f in (filters or [])]
+        race_condition = RaceCondition.from_dict(condition) if condition else None
+        group = GroupBy.from_dict(group_by) if group_by else None
+    except (KeyError, TypeError, ValueError) as e:
+        return {"success": False, "error": f"invalid argument: {e}"}
+    result = analyze_chakudo(manager, entry_filters, race_condition, group)
     if not result.success:
         return {"success": False, "error": result.error}
     return {
@@ -179,46 +78,6 @@ def get_uma_rekisen(
         week_in_course=week_in_course,
     )
     return _get_uma_rekisen(manager, uma_name=uma_name, condition=condition)
-
-
-def analyze_waku_seiseki(
-    manager: ConnectionManager,
-    keibajo: str | None = None,
-    kyori: int | None = None,
-    year_from: str | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
-) -> dict[str, Any]:
-    """枠番（1〜8）別の勝率・複勝率を集計する。
-
-    Args:
-        manager (ConnectionManager): DBコネクションマネージャ
-        keibajo (str | None): 競馬場コード
-        kyori (int | None): 距離（メートル）
-        year_from (str | None): 集計開始年
-        course_kubun (str | None): コース区分（例: 'C'）。week_in_courseと併用。
-        week_in_course (int | None): コース使用開始からの週番号。course_kubunと併用。
-
-    Returns:
-        dict: 枠番ごとの出走数・勝利数・勝率・複勝率を含む辞書
-    """
-    condition = RaceCondition(
-        keibajo_code=keibajo,
-        kyori=kyori,
-        year_from=year_from,
-        course_kubun=course_kubun,
-        week_in_course=week_in_course,
-    )
-    result = analyze_chakudo(
-        manager, [], condition, GroupBy(kind="race_col", column="u.wakuban")
-    )
-    if not result.success:
-        return {"success": False, "error": result.error}
-    return {
-        "success": True,
-        "count": len(result.rows),
-        "results": [asdict(row) for row in result.rows],
-    }
 
 
 def get_uma_chokyo(
@@ -330,65 +189,3 @@ def analyze_chokyo_debut_seiseki(
     return _analyze_chokyo_debut_seiseki(
         manager, debut_date_from, debut_date_to, condition=condition
     )
-
-
-def analyze_race_chakudo(
-    manager: ConnectionManager,
-    column: str,
-    keibajo: str | None = None,
-    kyori: int | None = None,
-    year_from: str | None = None,
-    year_to: str | None = None,
-    grade: str | None = None,
-    course_kubun: str | None = None,
-    week_in_course: int | None = None,
-) -> dict[str, Any]:
-    """レース結果を指定グループ別に着度数・勝率・複勝率・回収率で集計する。
-
-    Args:
-        manager (ConnectionManager): DBコネクションマネージャ
-        column (str): グループ化カラム名（SQL列参照、例: 'u.wakuban'）
-        keibajo (str | None): 競馬場コード
-        kyori (int | None): 距離（メートル）
-        year_from (str | None): 集計開始年（4桁文字列）
-        year_to (str | None): 集計終了年（4桁文字列）
-        grade (str | None): グレードコード
-        course_kubun (str | None): コース区分（week_in_courseと共に指定）
-        week_in_course (int | None): コース使用開始からの週番号（course_kubunと共に指定）
-
-    Returns:
-        dict: 集計結果を含む辞書
-    """
-    condition = RaceCondition(
-        keibajo_code=keibajo,
-        kyori=kyori,
-        year_from=year_from,
-        year_to=year_to,
-        grade_code=grade,
-        course_kubun=course_kubun,
-        week_in_course=week_in_course,
-    )
-    result = analyze_chakudo(
-        manager, [], condition, GroupBy(kind="race_col", column=column)
-    )
-    if not result.success:
-        return {"success": False, "error": result.error}
-    return {
-        "success": True,
-        "count": len(result.rows),
-        "results": [asdict(row) for row in result.rows],
-    }
-
-
-def _fmt_time4(val: str) -> str | None:
-    """4桁タイム文字列（0.1秒単位）を秒表記に変換する。センチネル値はNoneを返す。"""
-    if not val or val in ("0000", "9999"):
-        return None
-    return f"{int(val) / 10:.1f}秒"
-
-
-def _fmt_lap3(val: str) -> str | None:
-    """3桁ラップタイム文字列（0.1秒単位）を秒表記に変換する。センチネル値はNoneを返す。"""
-    if not val or val in ("000", "999"):
-        return None
-    return f"{int(val) / 10:.1f}秒"

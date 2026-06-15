@@ -186,11 +186,8 @@ uv run python -m mykeibadb_mcp_server.server --sse
 
 | ツール名 | 説明 | 主なパラメータ |
 |---------|------|--------------|
-| `tool_analyze_ninki_seiseki` | 人気別の勝率・複勝率を集計 | `ninki`, `keibajo`, `grade`, `year_from`, `kyori` |
-| `tool_analyze_kishu_seiseki` | 騎手名で成績を集計 | `kishu_name`, `keibajo`, `year_from`, `kyori` |
-| `tool_analyze_sire_seiseki` | 種牡馬（父馬）別の産駒成績を集計 | `sire_name`, `keibajo`, `kyori`, `year_from` |
+| `tool_analyze_chakudo` | 馬×レースを条件で絞り込み、指定軸でグループ別の着度数・勝率・複勝率・回収率を集計 | `filters`, `condition`, `group_by` |
 | `tool_get_uma_rekisen` | 馬名で過去の戦績一覧を取得 | `uma_name`, `year_from` |
-| `tool_analyze_waku_seiseki` | 枠番（1〜8）別の勝率・複勝率を集計 | `keibajo`, `kyori`, `year_from` |
 
 ### 汎用クエリ
 
