@@ -62,8 +62,10 @@ jobs:
           uv pip install "git+https://github.com/KeibaAI-developer/mykeibadb-python.git@develop"
           rm -f "$HOME/.netrc"
 
+      # --no-sources で [tool.uv.sources] を無視する。ローカル開発用に
+      # mykeibadb-python を隣のディレクトリへ向けているが、CIには存在しない。
       - name: Install dependencies
-        run: uv pip install -e ".[dev]"
+        run: uv pip install --no-sources -e ".[dev]"
 
       - name: Run mypy
         run: |
@@ -102,8 +104,10 @@ jobs:
           uv pip install "git+https://github.com/KeibaAI-developer/mykeibadb-python.git@develop"
           rm -f "$HOME/.netrc"
 
+      # --no-sources で [tool.uv.sources] を無視する。ローカル開発用に
+      # mykeibadb-python を隣のディレクトリへ向けているが、CIには存在しない。
       - name: Install dependencies
-        run: uv pip install -e ".[dev]"
+        run: uv pip install --no-sources -e ".[dev]"
 
       - name: Run unit tests
         run: |
