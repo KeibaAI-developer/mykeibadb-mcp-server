@@ -9,11 +9,9 @@ from mykeibadb.analytics import (
     GroupBy,
     RaceCondition,
     analyze_chakudo,
-)
-from mykeibadb.analytics import analyze_chokyo_debut_seiseki as _analyze_chokyo_debut_seiseki
-from mykeibadb.analytics import (
     build_entry_filter,
 )
+from mykeibadb.analytics import analyze_chokyo_debut_seiseki as _analyze_chokyo_debut_seiseki
 from mykeibadb.analytics import get_uma_chokyo as _get_uma_chokyo
 from mykeibadb.analytics import get_uma_rekisen as _get_uma_rekisen
 from mykeibadb.connection import ConnectionManager

@@ -12,7 +12,10 @@ TABLE_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "KAISAI_NEN": "開催年。4桁文字列（例: '2025'）。",
             "KAISAI_GAPPI": "開催月日。4桁文字列 mmdd形式（例: '0531'=5月31日）。",
             "KYORI": "距離（メートル）。整数文字列（例: '2000'=2000m）。",
-            "GRADE_CODE": "グレードコード。'A'=GI, 'B'=GII, 'C'=GIII, 'D'=重賞, 'E'=特別競走, '_'=一般競走。",
+            "GRADE_CODE": (
+                "グレードコード。'A'=GI, 'B'=GII, 'C'=GIII, 'D'=重賞, "
+                "'E'=特別競走, '_'=一般競走。"
+            ),
             "TRACK_CODE": "トラックコード。'11'=芝・左, '23'=ダート・左 等。",
             "TENKO_CODE": "天候コード。'1'=晴, '2'=曇, '3'=雨, '4'=小雨, '5'=雪, '6'=小雪。",
             "BABAJOTAI_SHIBA": "芝馬場状態コード。'1'=良, '2'=稍重, '3'=重, '4'=不良。",
@@ -33,12 +36,16 @@ TABLE_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             ),
             "KAISAI_NEN": "開催年。4桁文字列（例: '2025'）。",
             "KAISAI_GAPPI": "開催月日。4桁文字列 mmdd形式（例: '0531'=5月31日）。",
-            "KETTO_TOROKU_BANGO": "血統登録番号。10桁文字列。先頭4桁が生年（例: '2022105081'→生年2022）。",
+            "KETTO_TOROKU_BANGO": (
+                "血統登録番号。10桁文字列。先頭4桁が生年（例: '2022105081'→生年2022）。"
+            ),
             "SOHA_TIME": (
                 "走破タイム。4桁文字列 MSSS形式（例: '2315'=2分31秒5）。"
                 "'0000'=未計測（NaN相当）。SQL例: time_to_seconds('2315')=151.5秒。"
             ),
-            "KOHAN_3F": "後3ハロンタイム。3桁整数文字列、単位は0.1秒（例: '355'=35.5秒）。'999'=中止等。",
+            "KOHAN_3F": (
+                "後3ハロンタイム。3桁整数文字列、単位は0.1秒（例: '355'=35.5秒）。'999'=中止等。"
+            ),
             "TANSHO_ODDS": "単勝オッズ。3桁整数文字列、単位は0.1倍（例: '152'=15.2倍）。",
             "TANSHO_NINKIJUN": "単勝人気順位。2桁文字列ゼロ埋め（例: '01'=1番人気）。",
             "FUTAN_JURYO": "負担重量。3桁整数、単位は0.1kg（例: '560'=56.0kg）。",
@@ -48,7 +55,9 @@ TABLE_DESCRIPTIONS: dict[str, dict[str, Any]] = {
         },
     },
     "WOODCHIP_CHOKYO": {
-        "description": "ウッドチップ調教データ。美浦・栗東のウッドチップコースでの調教タイムを含む。",
+        "description": (
+            "ウッドチップ調教データ。美浦・栗東のウッドチップコースでの調教タイムを含む。"
+        ),
         "primary_key": ["TRACEN_KUBUN", "CHOKYO_NENGAPPI", "CHOKYO_JIKOKU", "KETTO_TOROKU_BANGO"],
         "date_column": {"yyyymmdd": "CHOKYO_NENGAPPI"},
         "column_notes": {
@@ -59,7 +68,8 @@ TABLE_DESCRIPTIONS: dict[str, dict[str, Any]] = {
             "TIME_GOKEI_6FURLONG": (
                 "6ハロン(1200M→0M)の合計タイム。"
                 "4桁文字列、単位は0.1秒（例: '0825'=82.5秒）。"
-                "測定不良='0000'、99.9秒超='9999'。SQLでは CAST(... AS INTEGER) <= 825 のように比較。"
+                "測定不良='0000'、99.9秒超='9999'。"
+                "SQLでは CAST(... AS INTEGER) <= 825 のように比較。"
             ),
             "TIME_GOKEI_5FURLONG": (
                 "5ハロン(1000M→0M)の合計タイム。"
@@ -93,10 +103,18 @@ TABLE_DESCRIPTIONS: dict[str, dict[str, Any]] = {
                 "4ハロン(800M→0M)の合計タイム。4桁文字列、単位は0.1秒。"
                 "測定不良='0000'。SQLでは CAST(... AS INTEGER) <= 525 のように比較。"
             ),
-            "LAP_TIME_1FURLONG": "ラスト1ハロンのラップタイム。3桁文字列、単位は0.1秒。測定不良='000'。",
-            "LAP_TIME_2FURLONG": "ラップタイム(400M→200M)。3桁文字列、単位は0.1秒。測定不良='000'。",
-            "LAP_TIME_3FURLONG": "ラップタイム(600M→400M)。3桁文字列、単位は0.1秒。測定不良='000'。",
-            "LAP_TIME_4FURLONG": "ラップタイム(800M→600M)。3桁文字列、単位は0.1秒。測定不良='000'。",
+            "LAP_TIME_1FURLONG": (
+                "ラスト1ハロンのラップタイム。3桁文字列、単位は0.1秒。測定不良='000'。"
+            ),
+            "LAP_TIME_2FURLONG": (
+                "ラップタイム(400M→200M)。3桁文字列、単位は0.1秒。測定不良='000'。"
+            ),
+            "LAP_TIME_3FURLONG": (
+                "ラップタイム(600M→400M)。3桁文字列、単位は0.1秒。測定不良='000'。"
+            ),
+            "LAP_TIME_4FURLONG": (
+                "ラップタイム(800M→600M)。3桁文字列、単位は0.1秒。測定不良='000'。"
+            ),
         },
     },
     "BAMEI_IMI_YURAI": {
