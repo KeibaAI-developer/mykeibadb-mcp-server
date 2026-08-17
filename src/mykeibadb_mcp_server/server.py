@@ -217,7 +217,8 @@ def get_sql_generation_prompt(query_text: str) -> dict[str, Any]:
 
     encoding_notes = (
         "## エンコーディング共通パターン\n"
-        "- 4桁タイム系（TIME_GOKEI_*等）: 整数文字列、単位は0.1秒。0000/9999はセンチネル値（無効）。"
+        "- 4桁タイム系（TIME_GOKEI_*等）: 整数文字列、単位は0.1秒。"
+        "0000/9999はセンチネル値（無効）。"
         "比較時は CAST(col AS INTEGER) <= 825 のように整数キャストして×10の閾値で比較。\n"
         "- 3桁タイム系（LAPTIME_*(WOODCHIP), LAP_TIME_*(HANRO), KOHAN_3F等）: "
         "整数文字列、単位は0.1秒。000/999はセンチネル値（無効）。\n"
@@ -303,7 +304,10 @@ def get_column_examples(table_name: str, column_name: str, limit: int = 10) -> d
         if upper_name not in TABLE_DESCRIPTIONS:
             return {"success": False, "error": f"テーブル '{upper_name}' はサポートされていません"}
         if not re.fullmatch(r"[A-Za-z0-9_]+", column_name):
-            return {"success": False, "error": "column_name は英数字とアンダースコアのみ使用可能です"}
+            return {
+                "success": False,
+                "error": "column_name は英数字とアンダースコアのみ使用可能です",
+            }
         clamped_limit = max(1, min(limit, _MAX_QUERY_ROWS))
         col_lower = column_name.lower()
         tbl_lower = upper_name.lower()
@@ -344,7 +348,9 @@ def schema_table_detail_resource(table_name: str) -> str:
     """
     upper = table_name.upper()
     if upper not in TABLE_DESCRIPTIONS:
-        return json.dumps({"success": False, "error": f"テーブル '{upper}' はサポートされていません"})
+        return json.dumps(
+            {"success": False, "error": f"テーブル '{upper}' はサポートされていません"}
+        )
     info = TABLE_DESCRIPTIONS[upper]
     return json.dumps(
         {
