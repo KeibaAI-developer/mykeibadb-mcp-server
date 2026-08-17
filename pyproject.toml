@@ -22,7 +22,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "mcp[cli]>=1.1.0",
+    # MCP SDK 2.0で mcp.server.fastmcp が廃止されたため2.0を除外する
+    "mcp[cli]>=1.1.0,<2.0.0",
     "mykeibadb-python",
     "python-dotenv>=1.0.0",
     "uvicorn>=0.30.0",
